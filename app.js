@@ -526,9 +526,11 @@ App({
     });
   },
 
-  analyzeNews: function(stocks, newsMap, fundName) {
+ analyzeNews: function(stocks, newsMap, fundName) {
     var data = { stocks: stocks, newsMap: newsMap };
     if (fundName) data.fundName = fundName;
+    if (arguments.length > 3 && arguments[3]) data.navTrend = arguments[3];
+    if (arguments.length > 4 && arguments[4]) data.position = arguments[4];
     return wx.cloud.callFunction({
       name: 'analyze',
       data: data

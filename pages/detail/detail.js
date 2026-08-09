@@ -381,10 +381,32 @@ Page({
     });
   },
 
-  runAnalyze: function(stocks, newsMap) {
-    var self = this;
-    self.setData({ loadingAnalysis: true });
-    app.analyzeNews(stocks, newsMap, self.data.name).then(function(result) {
+ runAnalyze: function(stocks, newsMap) {
+   var self = this;
+   self.setData({ loadingAnalysis: true });
+    var code = self._fundCode;
+    var nav = parseFloat(self.data.nav) || 0;
+    // 并行获取净值走势和持仓盈亏
+    var navPromise = app.fetchHistory(code, 132).then(function(histData) {
+      if (!histData || histData.length < 2) return null;
+      function pctChange(start, end) {
+        if (end >= histData.length) return null;
+        return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
+      }
+      var len = histData.length;
+      return {
+        '1m': pctChange(Math.max(0, len - 22), len - 1),
+        '3m': pctChange(Math.max(0, len - 66), len - 1),
+        '6m': pctChange(0, len - 1)
+      };
+    }).catch(function() { return null; });
+    var pl = app.calcProfitLoss(code, nav);
+    pl = app.applyPosOverrides(code, nav, pl);
+    var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
+    Promise.all([navPromise]).then(function(results) {
+      var navTrend = results[0];
+      return app.analyzeNews(stocks, newsMap, self.data.name, navTrend, position);
+    }).then(function(result) {
       if (!result) return;
       var labeled = result.labeled || {};
       var mergedMap = {};

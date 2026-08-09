@@ -94,10 +94,11 @@
         </block>
       </view>
       <view class="card-bottom">
-        <view wx:if="{{activeTab === 'position'}}" class="c-action c-trade" catchtap="showTrade" data-index="{{index}}">
-          <text>交易</text>
-        </view>
-        <view wx:else class="c-type-tag {{item._type === 'position' ? 'c-type-pos' : 'c-type-watch'}}" catchtap="showSwitchType" data-index="{{index}}">
+       <view wx:if="{{activeTab === 'position'}}" class="c-action c-trade" catchtap="showTrade" data-index="{{index}}">
+         <text>交易</text>
+       </view>
+       <view wx:if="{{activeTab === 'position' && item._suggestLabel}}" class="c-suggest {{item._suggestClass}}">{{item._suggestLabel}}</view>
+        <view wx:if="{{activeTab !== 'position'}}" class="c-type-tag {{item._type === 'position' ? 'c-type-pos' : 'c-type-watch'}}" catchtap="showSwitchType" data-index="{{index}}">
           {{item._type === 'position' ? '持仓' : '自选'}}
         </view>
         <view class="c-group" catchtap="showMoveGroup" data-index="{{index}}">

@@ -94,11 +94,12 @@ Page({
     // 仅在首次打开时完成同步，切换 tab / 切换页面不再重复同步
     if (!app.globalData._synced) this.autoSync();
     else this.setData({ lastSyncTime: app.globalData._lastSyncTime || '' });
-    if (app.globalData.funds.length > 0) {
-      this.setData({ funds: app.globalData.funds });
-      this.applyFilter();
-      this.updatePortfolio();
-    }
+   if (app.globalData.funds.length > 0) {
+     this.setData({ funds: app.globalData.funds });
+     this.applyFilter();
+     this.updatePortfolio();
+      this.analyzeAllFunds();
+   }
   },
 
   onHide: function() {
@@ -238,6 +239,12 @@ Page({
     result.forEach(function(f) {
       f._groupName = groupName(f.code);
       f._type = app.getFundType(f.code);
+      var sug = f.suggestion;
+      if (sug) {
+        if (sug.action === 'buy') { f._suggestLabel = '加仓'; f._suggestClass = 'red'; }
+        else if (sug.action === 'sell') { f._suggestLabel = '减仓'; f._suggestClass = 'green'; }
+        else { f._suggestLabel = '观望'; f._suggestClass = 'blue'; }
+      }
     });
     this.setData({ displayFunds: result });
   },
@@ -262,9 +269,79 @@ Page({
         pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
       }
     }
-    this.setData({ portfolio: pf });
+   this.setData({ portfolio: pf });
+ },
+ // ============ 基金加载 ============
+
+  // ============ AI 分析 ============
+
+ analyzeFundIfNeeded: function(fund) {
+   var self = this;
+   if (fund._holdingsLoaded) return Promise.resolve();
+   var code = fund.code;
+    var nav = parseFloat(fund.nav) || 0;
+   return app.fetchHoldings(code).then(function(data) {
+     var stocks = (data && data.stocks) || [];
+     fund.holdings = { sectors: (data && data.sectors) || [], stocks: stocks };
+     if (stocks.length === 0) {
+       fund._holdingsLoaded = true;
+       return null;
+     }
+      // 并行获取净值走势
+      var navPromise = app.fetchHistory(code, 132).then(function(histData) {
+        if (!histData || histData.length < 2) return null;
+        function pctChange(start, end) {
+          if (end >= histData.length) return null;
+          return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
+        }
+        var len = histData.length;
+        return {
+          '1m': pctChange(Math.max(0, len - 22), len - 1),
+          '3m': pctChange(Math.max(0, len - 66), len - 1),
+          '6m': pctChange(0, len - 1)
+        };
+      }).catch(function() { return null; });
+      return Promise.all(stocks.map(function(s) {
+        return app.fetchStockNews(s.code, s.name).then(function(news) {
+          return { code: s.code, news: news };
+        }).catch(function() { return { code: s.code, news: [] }; });
+      }).concat([navPromise])).then(function(results) {
+        var newsMap = {};
+        var navTrend = null;
+        results.forEach(function(r) {
+          if (r && r.code) newsMap[r.code] = r.news;
+          else if (r && typeof r['1m'] !== 'undefined') navTrend = r;
+        });
+        fund.news = newsMap;
+        var pl = app.calcProfitLoss(code, nav);
+        pl = app.applyPosOverrides(code, nav, pl);
+        var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
+        return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position);
+      });
+    }).then(function(result) {
+      if (result) fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' };
+      fund._holdingsLoaded = true;
+      self.applyFilter();
+      self.updatePortfolio();
+    }).catch(function() {
+      fund._holdingsLoaded = true;
+      self.applyFilter();
+      self.updatePortfolio();
+    });
   },
-  // ============ 基金加载 ============
+
+  analyzeAllFunds: function() {
+    var self = this;
+    var funds = app.globalData.funds;
+    var positionFunds = funds.filter(function(f) {
+      return app.getFundType(f.code) === 'position';
+    });
+    var chain = Promise.resolve();
+    positionFunds.forEach(function(f) {
+      chain = chain.then(function() { return self.analyzeFundIfNeeded(f); });
+    });
+    return chain;
+  },
 
   loadFunds: function(codes) {
     var self = this;
@@ -277,10 +354,11 @@ Page({
 
     var tasks = funds.map(function(f) { return self.fetchOne(f); });
     Promise.all(tasks).then(function() {
-      self.setData({ funds: app.globalData.funds, loading: false });
-      self.applyFilter();
-      self.updatePortfolio();
-    }).catch(function() { self.setData({ loading: false }); });
+     self.setData({ funds: app.globalData.funds, loading: false });
+     self.applyFilter();
+     self.updatePortfolio();
+      self.analyzeAllFunds();
+   }).catch(function() { self.setData({ loading: false }); });
   },
 
   fetchOne: function(fund) {
@@ -345,9 +423,10 @@ Page({
       self.setData({ funds: app.globalData.funds, showAddModal: false, adding: false, inputCode: '' });
       // 切换到对应类型的 tab
       self.setData({ activeTab: type, activeGroup: 'all' });
-      self.applyFilter();
-      self.updatePortfolio();
-      wx.showToast({ title: '添加成功', icon: 'success' });
+     self.applyFilter();
+     self.updatePortfolio();
+      self.analyzeAllFunds();
+     wx.showToast({ title: '添加成功', icon: 'success' });
     }).catch(function() {
       self.setData({ adding: false });
       wx.showToast({ title: '添加失败', icon: 'none' });

@@ -108,6 +108,10 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx;
 }
 .c-trade { background: rgba(212,168,83,0.15); color: var(--accent); border: 1px solid rgba(212,168,83,0.3); }
+.c-suggest { padding: 6rpx 16rpx; border-radius: 6rpx; font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx; }
+.c-suggest.red { background: var(--red-bg); color: var(--red); }
+.c-suggest.green { background: var(--green-bg); color: var(--green); }
+.c-suggest.blue { background: var(--blue-bg); color: var(--blue); }
 .c-type-tag { padding: 6rpx 16rpx; border-radius: 6rpx; font-size: 22rpx; font-weight: 700; }
 .c-type-pos { background: var(--red-bg); color: var(--red); }
 .c-type-watch { background: var(--blue-bg); color: var(--blue); }
