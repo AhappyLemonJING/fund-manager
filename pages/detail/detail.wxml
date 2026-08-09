@@ -3,7 +3,7 @@
 
 <!-- 页面内容使用 flex 布局：静态区 + 滚动区 -->
 <view class="detail-body">
-  <!-- 静态区域：基金头部 + 走势图 -->
+  <!-- 静态区域：基金头部 -->
   <view class="detail-static">
     <!-- 基金头部 -->
     <view class="d-header">
@@ -21,6 +21,13 @@
       <view class="d-trade-btn" bindtap="openTradeRecords">交易记录</view>
     </view>
 
+  </view>
+
+  <!-- 滚动区域：净值走势 + 持仓分析 + 新闻 + 建议 -->
+  <scroll-view class="detail-scroll" scroll-y
+    refresher-enabled refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh" refresher-threshold="80">
+
     <!-- 净值走势图 -->
     <view class="section">
       <view class="sec-title">净值走势 <text wx:if="{{benchmarkStatus}}" style="font-weight:400;font-size:22rpx;color:var(--text-dim);">{{benchmarkStatus}}</text></view>
@@ -36,12 +43,6 @@
         <canvas type="2d" id="navChart" style="width:100%;height:360rpx;" />
       </view>
     </view>
-  </view>
-
-  <!-- 滚动区域：持仓分析 + 新闻 + 建议 -->
-  <scroll-view class="detail-scroll" scroll-y
-    refresher-enabled refresher-triggered="{{refreshing}}"
-    bindrefresherrefresh="onRefresh" refresher-threshold="80">
     <!-- 关联板块 -->
     <view class="section">
       <view class="sec-title">关联板块</view>
@@ -84,7 +85,30 @@
       </view>
     </view>
 
-    <!-- 综合建议 -->
+
+    <!-- 关联板块及近期公告（AI分析） -->
+    <view wx:if="{{aiSectors.length > 0}}" class="section">
+      <view class="sec-title">
+        关联板块及近期公告
+        <text wx:if="{{loadingSectorNews}}" class="loading-tag">搜索中...</text>
+      </view>
+      <view wx:if="{{sectorNewsError}}" class="error-line">{{sectorNewsError}}</view>
+      <view wx:for="{{aiSectors}}" wx:key="name" class="sector-block">
+        <view class="sector-head">
+          <text class="sector-name">{{item.name}}</text>
+          <text class="sector-reason">{{item.reason}}</text>
+        </view>
+        <block wx:if="{{sectorNewsMap[item.name] && sectorNewsMap[item.name].length > 0}}">
+          <view wx:for="{{sectorNewsMap[item.name]}}" wx:key="title" wx:for-item="n" class="news-item">
+            <view class="news-body">
+              <text class="news-text">{{n.title}}</text>
+              <text wx:if="{{n.date}}" class="news-time">{{n.date}}</text>
+            </view>
+          </view>
+        </block>
+        <view wx:else style="font-size:24rpx;color:var(--text-dim);padding:12rpx 0;">近7日无相关快讯</view>
+      </view>
+    </view>    <!-- 综合建议 -->
     <view wx:if="{{suggest}}" class="rec {{suggestClass}}">
       <view wx:if="{{loadingAnalysis}}" class="loading-line">AI 分析中...</view>
       <block wx:else>

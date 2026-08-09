@@ -236,3 +236,22 @@ page {
   background: rgba(255,255,255,0.03);
   margin-top: 0;
 }
+
+/* ========== AI 关联板块及近期公告 ========== */
+.sector-block {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16rpx; padding: 24rpx; margin-bottom: 16rpx;
+}
+.sector-head {
+  display: flex; align-items: center; gap: 14rpx;
+  margin-bottom: 16rpx; padding-bottom: 16rpx;
+  border-bottom: 1px solid var(--border);
+}
+.sector-name {
+  font-size: 30rpx; font-weight: 700; color: var(--accent);
+  flex-shrink: 0;
+}
+.sector-reason {
+  font-size: 22rpx; color: var(--text-dim); line-height: 1.4;
+  flex: 1; min-width: 0;
+}

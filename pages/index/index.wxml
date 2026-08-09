@@ -1,7 +1,7 @@
 <navigation-bar title="基金管理" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
 <!-- 云同步状态栏 -->
-<view class="sync-bar">
-  <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步')}}</text>
+<view class="sync-bar" bindtap="manualSync">
+  <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步 - 点击同步')}}</text>
 </view>
 
 <!-- 持仓概况 (仅持仓tab显示) -->

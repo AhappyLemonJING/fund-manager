@@ -22,7 +22,8 @@ exports.main = async (event) => {
     url = 'https://api.fund.eastmoney.com/f10/lsjz?fundCode=160706&pageIndex=1&pageSize=250' + (bsd ? '&sdate=' + bsd : '') + (bed ? '&edate=' + bed : '');
   } else if (type === 'holdings') {
     url = 'https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=' + encodeURIComponent(code) + '&topline=10&year=&month=&rt=' + Date.now();
-  } else if (type === 'stocknews') {
+
+      } else if (type === 'stocknews') {
     var cn = code.replace(/[^0-9]/g, '');
     var ex = /^60[0-3]/.test(cn) || /^68/.test(cn) ? 'SHA' : 'SZA';
     if (/^0\d{4}$/.test(cn)) {
@@ -32,6 +33,16 @@ exports.main = async (event) => {
       url = 'https://np-anotice-stock.eastmoney.com/api/security/ann?page_size=10&page_index=1&ann_type=' + ex + '&stock_list=' + cn;
     }
     opts.timeout = 8000;
+		} else if (type === 'sectornews') {
+    var keyword = event.keyword || code;
+    var emUrl = 'https://np-listapi.eastmoney.com/comm/web/getNewsByColumns?client=web&biz=web_news_col&columnId=all&pageIndex=1&pageSize=100';
+    var wscnUrl = 'https://api-one.wallstcn.com/apiv1/content/lives?channel=global-channel,a-stock-channel&client=pc&limit=200&first_page=true';
+    return Promise.all([
+      fetchJSON(emUrl),
+      fetchJSON(wscnUrl)
+    ]).then(function(results) {
+      return parseSectorNews(results[0], results[1], keyword);
+    });
         } else if (type === 'indices') {
     // Sina hq.sinajs.cn API，响应为 GBK 编码，需用 TextDecoder 解码
     return new Promise(function(resolve) {
@@ -244,4 +255,117 @@ function parseRank(body) {
   } catch (e) {
     return { error: e.message };
   }
+}
+
+function parseSectorNews(emData, wscnData, keyword) {
+  var now = new Date();
+  var news = [];
+  var kw = keyword || '';
+  if (!kw) return { news: [], total: 0 };
+
+  // --- 板块同义词表 ---
+  var synonyms = {
+    '白酒': ['茅台', '五粮液', '泸州老窖', '洋河', '酒', '酿造', '汾酒', '古井贡'],
+    '新能源': ['光伏', '锂电', '电池', '储能', '风电', '太阳能', '宁德时代', '比亚迪', '隆基', '通威', '阳光电源'],
+    '半导体': ['芯片', '集成电路', '晶圆', '光刻', '中芯', '海思', '封测', 'EDA', 'Arm'],
+    '医药': ['医疗', '制药', '生物', '药明', '恒瑞', '疫苗', '创新药', 'CRO', 'CXO'],
+    'AI': ['人工智能', '大模型', '算力', '深度学习', 'GPT', '英伟达', 'GPU', '光模块', 'CPO', '机器人'],
+    '消费电子': ['手机', '苹果', '华为', '小米', '电子', '立讯', '可穿戴', 'MR', 'Vision'],
+    '银行': ['银行', '信贷', '存款', '利率', '金融', 'LPR', '降息', '降准'],
+    '证券': ['券商', '证券', '投行', '中信', '华泰', 'IPO', '两融', '印花税'],
+    '军工': ['国防', '军工', '航天', '航空', '导弹', '舰船', '战斗机', '军贸'],
+    '汽车': ['整车', '新能源车', '自动驾驶', '智能驾驶', '特斯拉', '理想', '小鹏', '蔚来'],
+    '传媒': ['影视', '广告', '游戏', '传媒', '娱乐', '短剧', '抖音', '直播'],
+    '地产': ['房地产', '地产', '楼市', '房价', '万科', '保利', '碧桂园'],
+    '煤炭': ['煤炭', '煤矿', '煤价', '能源', '焦煤', '动力煤'],
+    '电力': ['电力', '发电', '电网', '电价', '核电', '火电', '绿电', '特高压'],
+    '有色': ['铜', '铝', '黄金', '稀土', '锂矿', '金属', '钴', '镍'],
+    '钢铁': ['钢铁', '钢材', '铁矿石', '螺纹钢', '热卷'],
+    '农业': ['农业', '农产品', '粮食', '种业', '养殖', '猪', '鸡', '饲料'],
+    '环保': ['环保', '碳中和', '减排', '污水处理', '碳交易', 'CCER'],
+    '食品饮料': ['食品', '饮料', '乳业', '调味品', '预制菜', '伊利', '海天'],
+    '家电': ['家电', '空调', '冰箱', '洗衣机', '美的', '格力', '海尔'],
+    '通信': ['5G', '6G', '通信', '光通信', '光纤', '基站', '中兴'],
+    '计算机': ['软件', '云计算', '信创', '数据要素', '国产替代', '操作系统']
+  };
+
+  var syns = synonyms[kw] || [];
+
+  // 去重用
+  var seen = {};
+
+  function addItem(title, col, timeObj, src) {
+    var key = title.substring(0, 30);
+    if (seen[key]) return;
+    seen[key] = true;
+    var ds = timeObj.getFullYear() + '-' +
+      String(timeObj.getMonth() + 1).padStart(2, '0') + '-' +
+      String(timeObj.getDate()).padStart(2, '0');
+    var ts = ds + ' ' +
+      String(timeObj.getHours()).padStart(2, '0') + ':' +
+      String(timeObj.getMinutes()).padStart(2, '0') + ':' +
+      String(timeObj.getSeconds()).padStart(2, '0');
+    news.push({
+      title: title.length > 80 ? title.substring(0, 80) + '...' : title,
+      column: col || '市场资讯',
+      time: ts,
+      date: ds,
+      source: src
+    });
+  }
+
+  function matchKeyword(text) {
+    if (!text) return false;
+    if (text.indexOf(kw) >= 0) return true;
+    for (var s = 0; s < syns.length; s++) {
+      if (text.indexOf(syns[s]) >= 0) return true;
+    }
+    return false;
+  }
+
+  function processEmItems(items) {
+    if (!items || !items.length) return;
+    items.forEach(function(item) {
+      var title = item.title || '';
+      var content = item.content || '';
+      var text = title + ' ' + content;
+      if (!matchKeyword(text)) return;
+
+      var ts = item.showTime || item.date || '';
+      var m = ts.match(/(\d{4})-(\d{2})-(\d{2})\s*(\d{2}):(\d{2}):(\d{2})/);
+      if (!m) { m = ts.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) ts = m[0] + ' 00:00:00'; else return; }
+      try {
+        var d = new Date(m[1] + '-' + m[2] + '-' + m[3] + 'T' + (m[4] || '00') + ':' + (m[5] || '00') + ':' + (m[6] || '00'));
+        if (isNaN(d.getTime())) return;
+        var h = (now - d) / 36e5;
+        if (h < 0 || h > 168) return;
+        addItem(title, '市场资讯', d, 'eastmoney');
+      } catch(e) {}
+    });
+  }
+
+  function processWscnItems(items) {
+    if (!items || !items.length) return;
+    items.forEach(function(item) {
+      var text = item.content_text || '';
+      if (!matchKeyword(text)) return;
+      var d = new Date((item.display_time || 0) * 1000);
+      if (isNaN(d.getTime())) return;
+      var h = (now - d) / 36e5;
+      if (h < 0 || h > 168) return;
+      var title = text.length > 100 ? text.substring(0, 100) + '...' : text;
+      addItem(title, '市场快讯', d, 'wscn');
+    });
+  }
+
+  // 处理双源数据
+  var emList = (emData && emData.data && emData.data.list) || [];
+  var wscnItems = (wscnData && wscnData.data && wscnData.data.items) || [];
+  processEmItems(emList);
+  processWscnItems(wscnItems);
+
+  news.sort(function(a, b) { return b.time.localeCompare(a.time); });
+  if (news.length > 20) news = news.slice(0, 20);
+
+  return { news: news, total: news.length };
 }

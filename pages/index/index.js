@@ -447,6 +447,7 @@ Page({
       app.saveCodes(app.globalData.funds.map(function(f) { return f.code; }));
       if (groupId) app.setFundGroup(code, groupId);
       app.setFundType(code, type);
+      app.pushToCloud();
       self.setData({ funds: app.globalData.funds, showAddModal: false, adding: false, inputCode: '' });
       // 切换到对应类型的 tab
       self.setData({ activeTab: type, activeGroup: 'all' });
@@ -481,6 +482,7 @@ Page({
     var fund = this.data.displayFunds[idx];
     if (!fund) return;
     app.setFundType(fund.code, type);
+    app.pushToCloud();
     this.setData({ showSwitchTypeModal: false });
     this.applyFilter();
     this.updatePortfolio();
@@ -560,6 +562,7 @@ Page({
     var override = { marketValue: mv, profit: pf };
     if (hasDays) override.holdingDays = days;
     app.setPosOverride(code, override);
+    app.pushToCloud();
     // 刷新显示
     var pl = app.calcProfitLoss(code, nav);
     pl = app.applyPosOverrides(code, nav, pl);
@@ -578,6 +581,7 @@ Page({
     var code = this.data.tradeFundCode;
     var nav = parseFloat(this.data.tradeFundNav) || 0;
     app.setPosOverride(code, null);
+    app.pushToCloud();
     var pl = app.calcProfitLoss(code, nav);
     pl.sharesStr = pl.shares.toFixed(2);
     pl.avgCostStr = pl.avgCost.toFixed(4);
@@ -623,6 +627,7 @@ Page({
     };
 
     var trades = app.addTrade(code, trade);
+    app.pushToCloud();
     var pl = app.calcProfitLoss(code, nav);
     pl = app.applyPosOverrides(code, nav, pl);
     pl.sharesStr = pl.shares.toFixed(2);
@@ -655,6 +660,7 @@ Page({
     var code = this.data.tradeFundCode;
     var nav = parseFloat(this.data.tradeFundNav) || 0;
     var trades = app.deleteTrade(code, idx);
+    app.pushToCloud();
     var pl = app.calcProfitLoss(code, nav);
     pl = app.applyPosOverrides(code, nav, pl);
     pl.sharesStr = pl.shares.toFixed(2);
@@ -737,6 +743,7 @@ Page({
   }
    // 清理 position_overrides
    app.setPosOverride(code, null);
+   app.pushToCloud();
    this.setData({ funds: allFunds, showDeleteModal: false });
    this.applyFilter();
    this.updatePortfolio();
@@ -766,6 +773,7 @@ Page({
     var name = (this.data.newGroupName || '').trim();
     if (!name) { wx.showToast({ title: '请输入分组名称', icon: 'none' }); return; }
     app.addGroup(name);
+    app.pushToCloud();
     this.setData({ newGroupName: '', groups: app.globalData.groups });
     this.buildGroupTabs();
   },
@@ -790,6 +798,7 @@ Page({
   hideDelGroupModal: function() { this.setData({ showDelGroupModal: false }); },
   executeDelGroup: function() {
     app.deleteGroup(this.data.delGroupId);
+    app.pushToCloud();
     this.setData({ showDelGroupModal: false, groups: app.globalData.groups });
     if (this.data.activeGroup === this.data.delGroupId) {
       this.setData({ activeGroup: 'all' });
@@ -807,6 +816,7 @@ Page({
    var name = (this.data.quickGroupName || '').trim();
    if (!name) { wx.showToast({ title: '请输入分组名称', icon: 'none' }); return; }
    var id = app.addGroup(name);
+   app.pushToCloud();
    this.buildGroupTabs();
    this.setData({ showQuickGroup: false, addGroupId: id, groups: app.globalData.groups });
  },
@@ -818,6 +828,7 @@ Page({
     var name = (this.data.renameGroupName || '').trim();
     if (!name) { wx.showToast({ title: '请输入分组名称', icon: 'none' }); return; }
     app.renameGroup(this.data.renameGroupId, name);
+    app.pushToCloud();
     this.setData({ showRenameModal: false, groups: app.globalData.groups });
     this.buildGroupTabs();
     this.applyFilter();
@@ -825,6 +836,32 @@ Page({
   },
 
   // ============ 云同步 ============
+
+  manualSync: function() {
+    var self = this;
+    if (self.data.syncing) return;
+    self.setData({ syncing: true });
+    app.syncData().then(function(result) {
+      var now = new Date();
+      var ts = now.getHours().toString().padStart(2, '0') + ':' +
+               now.getMinutes().toString().padStart(2, '0');
+      app.globalData._lastSyncTime = ts;
+      self.setData({ syncing: false, lastSyncTime: ts });
+      if (result.ok) {
+        app.globalData.groups = app.loadGroups();
+        app.globalData.groupMap = app.loadGroupMap();
+        self.buildGroupTabs();
+        self.applyFilter();
+        self.updatePortfolio();
+        wx.showToast({ title: '同步成功', icon: 'success', duration: 1000 });
+      } else {
+        wx.showToast({ title: result.error || '同步失败', icon: 'none' });
+      }
+    }).catch(function() {
+      self.setData({ syncing: false });
+      wx.showToast({ title: '网络错误', icon: 'none' });
+    });
+  },
 
   autoSync: function() {
     if (app.globalData._synced) return;
@@ -935,6 +972,7 @@ Page({
     };
 
     app.addPlan(plan);
+    app.pushToCloud();
     // 刷新计划列表
     var plans = app.getFundPlans(code);
     for (var i = 0; i < plans.length; i++) {
@@ -985,6 +1023,7 @@ Page({
       dayOfWeek: this.data.planDayOfWeek,
       dayOfMonth: this.data.planDayOfMonth
     });
+    app.pushToCloud();
     var plans = app.getFundPlans(this.data.planFundCode);
     for (var i = 0; i < plans.length; i++) {
       var p = plans[i];
@@ -1008,6 +1047,7 @@ Page({
       success: function(res) {
         if (res.confirm) {
           app.deletePlan(id);
+          app.pushToCloud();
           var plans = app.getFundPlans(self.data.planFundCode);
           for (var i = 0; i < plans.length; i++) {
             var p = plans[i];
@@ -1032,6 +1072,7 @@ Page({
       }
     }
     app.updatePlan(id, { active: active });
+    app.pushToCloud();
     var updated = app.getFundPlans(this.data.planFundCode);
     for (var j = 0; j < updated.length; j++) {
       var p = updated[j];
@@ -1053,6 +1094,7 @@ Page({
     plan._forceExec = true;
     var executed = app._executePlan(plan);
     if (executed) {
+      app.pushToCloud();
       this.applyFilter();
       this.updatePortfolio();
     }

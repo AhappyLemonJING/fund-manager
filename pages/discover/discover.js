@@ -141,6 +141,7 @@ Page({
     app.globalData.funds.push(fund);
     app.saveCodes(app.globalData.funds.map(function(f) { return f.code; }));
     app.setFundType(code, 'watch');
+    app.pushToCloud();
 
     app.fetchNav(code).then(function(data) {
       if (data) {

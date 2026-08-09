@@ -1,5 +1,7 @@
 page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
+/* ========== 滚动区域 ========== */
+.scrollarea { padding-bottom: 160rpx; }
 /* ========== 持仓概况 ========== */
 .pf-summary {
   background: linear-gradient(135deg, #1a1f2e 0%, #161b22 50%, #1a1f2e 100%);
@@ -77,31 +79,31 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 /* ========== 基金卡片 ========== */
 .card {
   background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 24rpx; padding: 24rpx 28rpx 16rpx; margin-bottom: 16rpx;
+  border-radius: 24rpx; padding: 16rpx 28rpx 10rpx; margin-bottom: 16rpx;
   transition: all 0.2s;
 }
 .card:active { opacity: 0.85; transform: scale(0.985); }
-.card-top { display: flex; justify-content: flex-start; align-items: center; gap: 20rpx; overflow: hidden; }
+.card-top { display: flex; justify-content: flex-start; align-items: center; gap: 8rpx; overflow: hidden; }
 .card-info { flex: 1; min-width: 0; overflow: hidden; }
-.card-code-name { display: flex; align-items: baseline; gap: 12rpx; overflow: hidden; }
-.card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; flex-shrink: 0; }
+.card-code-name { display: flex; align-items: baseline; gap: 4rpx; overflow: hidden; }
+.card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; flex-shrink: 0; line-height: 1.2; }
 .card-name {
-  font-size: 30rpx; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 30rpx; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2;
 }
-.card-price { text-align: right; flex-shrink: 0; }
-.card-nav { font-size: 34rpx; font-weight: 700; display: block; }
-.card-pct { font-size: 26rpx; font-weight: 600; margin-right: 0; display: block; }
+.card-price { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; gap: 0; }
+.card-nav { font-size: 34rpx; font-weight: 700; line-height: 1.1; }
+.card-pct { font-size: 26rpx; font-weight: 600; margin-right: 0; line-height: 1.1; }
 
 /* 持仓盈亏行 */
-.card-pl { padding: 12rpx 0 6rpx; }
+.card-pl { padding: 4rpx 0 2rpx; }
 .pl-row { display: flex; justify-content: flex-start; align-items: center; }
-.pl-cost { font-size: 22rpx; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-.pl-profit { font-size: 26rpx; font-weight: 700; margin-left: auto; flex-shrink: 0; }
+.pl-cost { font-size: 22rpx; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; line-height: 1.2; min-width: 0; }
+.pl-profit { font-size: 26rpx; font-weight: 700; margin-left: auto; flex-shrink: 0; line-height: 1.2; }
 
 /* bottom row */
 .card-bottom {
   display: flex; align-items: center; gap: 12rpx;
-  padding-top: 14rpx; border-top: 1px solid var(--border);
+  padding-top: 6rpx; border-top: 1px solid var(--border);
 }
 .c-action {
   padding: 6rpx 16rpx; border-radius: 6rpx;
@@ -215,7 +217,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   color: var(--text); width: 100%; height:auto; box-sizing: border-box;
 }
 .modal-hint { font-size: 22rpx; color: var(--text-dim); margin-top: 10rpx; }
-.modal-btns { display: flex; gap: 20rpx; margin-top: 28rpx; }
+.modal-btns { display: flex; gap: 12rpx; margin-top: 28rpx; }
 .btn {
   flex: 1; text-align: center; padding: 18rpx 0;
   border-radius: 16rpx; font-weight: 600; margin-right: 0; font-size: 28rpx;
