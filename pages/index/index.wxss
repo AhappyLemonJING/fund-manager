@@ -1,0 +1,174 @@
+page { background: var(--bg); width: 100%; overflow-x: hidden; }
+
+/* ========== Tab 分组栏 ========== */
+.tab-bar {
+  white-space: nowrap;
+  padding: 16rpx 24rpx 12rpx;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  height: 80rpx;
+}
+.tab-item {
+  display: inline-block;
+  padding: 10rpx 28rpx;
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  border-radius: 30rpx;
+  margin-right: 12rpx;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.tab-active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.tab-mgr {
+  font-size: 22rpx;
+  padding: 10rpx 16rpx;
+  color: var(--text-dim);
+}
+ .tab-add-group {
+   font-size: 24rpx;
+   padding: 10rpx 24rpx;
+   color: var(--accent);
+   background: rgba(212,168,83,0.1);
+   border: 1px dashed var(--accent);
+   font-weight: 600;
+ }
+
+/* ========== 基金卡片 ========== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24rpx;
+  padding: 28rpx 28rpx 22rpx;
+  margin-bottom: 20rpx;
+  transition: all 0.2s;
+}
+.card:active { opacity: 0.85; transform: scale(0.985); }
+.card-top {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 24rpx; margin-bottom: 20rpx; overflow: hidden;
+}
+.card-info { flex: 1; min-width: 0; overflow: hidden; }
+.card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; }
+.card-name {
+  font-size: 30rpx; font-weight: 700; margin-top: 6rpx;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-price { text-align: right; flex-shrink: 0; }
+.card-nav { font-size: 34rpx; font-weight: 700; display: block; }
+.card-pct { font-size: 26rpx; font-weight: 600; margin-top: 4rpx; display: block; }
+
+/* bottom row */
+.card-bottom {
+  display: flex; align-items: center; gap: 16rpx;
+  padding-top: 18rpx; border-top: 1px solid var(--border);
+}
+.c-suggest {
+  padding: 8rpx 18rpx; border-radius: 6rpx;
+  font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx;
+}
+.s-buy { background: var(--red-bg); color: var(--red); }
+.s-sell { background: var(--green-bg); color: var(--green); }
+.s-hold { background: var(--blue-bg); color: var(--blue); }
+.c-group {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 4rpx; padding: 8rpx 0;
+}
+.c-group-label { font-size: 22rpx; color: var(--text-dim); }
+.c-group-arrow { font-size: 24rpx; color: var(--text-dim); margin-left: 2rpx; }
+.c-del {
+  width: 44rpx; height: 44rpx; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 26rpx; font-weight: 300;
+  border: 1px solid transparent; transition: all 0.15s;
+}
+.c-del:active { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+
+
+/* 分组标签 */
+.mv-item {
+  padding: 14rpx 28rpx; border-radius: 26rpx; font-size: 26rpx;
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.mv-sel {
+  background: rgba(212,168,83,0.18); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+
+/* ========== 弹窗通用 ========== */
+.modal-mask {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.55); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 24rpx; padding: 40rpx 36rpx; width: 600rpx;
+}
+.modal-title { font-size: 34rpx; font-weight: 700; margin-bottom: 28rpx; }
+.modal-label { font-size: 26rpx; color: var(--text-secondary); margin-bottom: 12rpx; }
+.modal-input {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 16rpx; padding: 22rpx 24rpx; font-size: 32rpx;
+  color: var(--text); width: 100%; height:auto; box-sizing: border-box;
+}
+.modal-hint { font-size: 22rpx; color: var(--text-dim); margin-top: 10rpx; }
+.modal-btns { display: flex; gap: 20rpx; margin-top: 36rpx; }
+.btn {
+  flex: 1; text-align: center; padding: 20rpx 0;
+  border-radius: 16rpx; font-weight: 600; font-size: 28rpx;
+}
+.btn-cancel { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+.btn-ok { background: var(--accent); color: #000; }
+.btn-del { background: var(--red); color: #fff; }
+.btn-disabled { opacity: 0.4; }
+.modal-confirm { text-align: center; }
+.confirm-text { font-size: 28rpx; color: var(--text-secondary); margin: 20rpx 0 30rpx; line-height: 1.6; }
+
+/* ========== 分组选择器 ========== */
+.group-picker {
+  white-space: nowrap;
+  padding: 4rpx 0;
+  flex: none;
+  height: 60rpx;
+}
+.gp-item {
+  display: inline-block;
+  padding: 8rpx 22rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  border-radius: 24rpx;
+  margin-right: 12rpx;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+.gp-sel {
+  background: rgba(212,168,83,0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.gp-new {
+  color: var(--accent);
+  border-style: dashed;
+}
+
+/* ========== 分组管理 ========== */
+.gm-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20rpx 0; border-bottom: 1px solid var(--border); gap: 16rpx;
+}
+.gm-name { font-size: 28rpx; flex: 1; }
+.gm-input {
+  flex: 1; background: var(--bg-input); border: 1px solid var(--accent);
+  border-radius: 12rpx; padding: 14rpx 18rpx; font-size: 28rpx; color: var(--text);
+}
+.gm-actions { display: flex; gap: 16rpx; flex-shrink: 0; }
+.gm-btn { font-size: 24rpx; color: var(--text-secondary); padding: 4rpx 8rpx; }
+.gm-del { color: var(--red); }
+.gm-ok { color: var(--green); font-weight: 700; font-size: 28rpx; }

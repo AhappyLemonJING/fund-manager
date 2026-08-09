@@ -1,0 +1,40 @@
+/* 全局样式 - 深色金融科技风 */
+page {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-input: #1a1f2e;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #d4a853;
+  --red: #f85149;
+  --red-bg: rgba(248,81,73,0.12);
+  --green: #3fb950;
+  --green-bg: rgba(63,185,80,0.12);
+  --blue: #58a6ff;
+  --blue-bg: rgba(88,166,255,0.12);
+
+  height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 28rpx;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.scrollarea {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24rpx 32rpx 48rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.red { color: var(--red); }
+.green { color: var(--green); }
+.blue { color: var(--blue); }
+
+.weui-navigation-bar { --weui-FG-0: rgba(255,255,255,0.9); }

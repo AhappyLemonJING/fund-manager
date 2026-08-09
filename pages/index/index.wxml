@@ -1,0 +1,165 @@
+<navigation-bar title="基金管理" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
+
+<!-- Tab 分组栏 -->
+<scroll-view class="tab-bar" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+ <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeTab === item.id ? 'tab-active' : ''}}" bindtap="switchTab" bindlongpress="longPressTab" data-id="{{item.id}}" data-name="{{item.name}}">
+    {{item.name}}
+  </view>
+  <view class="tab-item tab-add-group" bindtap="showGroupMgr">+ 分组</view>
+</scroll-view>
+
+<scroll-view class="scrollarea" scroll-y type="list"
+  refresher-enabled refresher-triggered="{{refreshing}}"
+  bindrefresherrefresh="onRefresh" refresher-threshold="80">
+  <view wx:if="{{loading}}" style="text-align:center;padding:200rpx 0;">
+    <text style="color:var(--text-dim);">加载中...</text>
+  </view>
+  <view wx:elif="{{displayFunds.length === 0}}" style="text-align:center;padding:240rpx 0 80rpx;">
+    <text style="font-size:100rpx;opacity:0.4;">📊</text>
+    <view style="margin-top:30rpx;color:var(--text-secondary);font-size:28rpx;line-height:1.6;">
+      还没有添加基金<text style="display:block;">点击下方按钮添加</text>
+    </view>
+    <view style="margin-top:40rpx;padding:20rpx 60rpx;background:var(--accent);color:#000;border-radius:40rpx;font-weight:600;font-size:28rpx;display:inline-block;" bindtap="showAddModal">+ 添加基金</view>
+  </view>
+  <view wx:else>
+    <view wx:for="{{displayFunds}}" wx:key="code" class="card" bindtap="goDetail" data-index="{{index}}">
+      <view class="card-top">
+        <view class="card-info">
+          <text class="card-code">{{item.code}}</text>
+          <view class="card-name">{{item.name || '加载中'}}</view>
+        </view>
+        <view class="card-price">
+          <text class="card-nav">{{item.nav != null ? item.nav : '--'}}</text>
+          <text class="card-pct {{item.changePct >= 0 ? 'red' : 'green'}}">
+            {{item.changePct != null ? (item.changePct >= 0 ? '+' : '') + item.changePct : '--'}}%
+          </text>
+        </view>
+      </view>
+      <view class="card-bottom">
+        <view class="c-suggest {{item.suggestion.action === 'buy' ? 's-buy' : item.suggestion.action === 'sell' ? 's-sell' : 's-hold'}}" catchtap="goDetail" data-index="{{index}}">
+          <text wx:if="{{item.suggestion.action === 'buy'}}">加仓</text>
+          <text wx:elif="{{item.suggestion.action === 'sell'}}">减仓</text>
+          <text wx:else>观望</text>
+        </view>
+        <view class="c-group" catchtap="showMoveGroup" data-index="{{index}}">
+          <text class="c-group-label">{{item._groupName}}</text>
+          <text class="c-group-arrow">›</text>
+        </view>
+        <view class="c-del" catchtap="confirmDelete" data-index="{{index}}">✕</view>
+      </view>
+    </view>
+    <view style="text-align:center;padding:32rpx 0 60rpx;" bindtap="showAddModal">
+      <text style="color:var(--accent);font-size:28rpx;border:1px solid var(--border);border-radius:40rpx;padding:16rpx 60rpx;">+ 添加基金</text>
+    </view>
+  </view>
+</scroll-view>
+
+<!-- 添加基金弹窗 -->
+<view wx:if="{{showAddModal}}" class="modal-mask" bindtap="hideAddModal">
+  <view class="modal" catch:tap="noop">
+    <view class="modal-title">添加基金</view>
+    <!-- 基金代码 -->
+    <view class="modal-label">基金代码</view>
+    <input class="modal-input" placeholder="例如: 000001" placeholder-style="color:#6e7681" value="{{inputCode}}" bindinput="onInputCode" maxlength="6" type="number"/>
+    <view class="modal-hint">输入6位数字基金代码</view>
+    <!-- 分组选择 -->
+    <view class="modal-label" style="margin-top:24rpx;">分组</view>
+    <scroll-view class="group-picker" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+      <view class="gp-item {{addGroupId === '' ? 'gp-sel' : ''}}" bindtap="pickGroup" data-id="">未分组</view>
+      <view wx:for="{{groups}}" wx:key="id" class="gp-item {{addGroupId === item.id ? 'gp-sel' : ''}}" bindtap="pickGroup" data-id="{{item.id}}">{{item.name}}</view>
+      <view class="gp-item gp-new" bindtap="quickAddGroup">+新建</view>
+    </scroll-view>
+    <!-- 按钮 -->
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideAddModal">取消</view>
+      <view class="btn btn-ok {{adding ? 'btn-disabled' : ''}}" bindtap="addFund">确认添加</view>
+    </view>
+  </view>
+</view>
+
+<!-- 分组管理弹窗 -->
+<view wx:if="{{showGroupModal}}" class="modal-mask" bindtap="hideGroupMgr">
+  <view class="modal" catch:tap="noop" style="max-height:80vh;overflow-y:auto;">
+    <view class="modal-title">管理分组</view>
+    <view wx:for="{{groups}}" wx:key="id" class="gm-row">
+      <text wx:if="{{gmEditId !== item.id}}" class="gm-name">{{item.name}}</text>
+      <input wx:else class="gm-input" value="{{gmEditName}}" bindinput="onGmInput" maxlength="10" focus="{{true}}"/>
+      <view class="gm-actions">
+        <text wx:if="{{gmEditId !== item.id}}" class="gm-btn" bindtap="startRename" data-id="{{item.id}}" data-name="{{item.name}}">重命名</text>
+        <text wx:else class="gm-btn gm-ok" bindtap="confirmRename" data-id="{{item.id}}">✓</text>
+        <text wx:if="{{gmEditId !== item.id}}" class="gm-btn gm-del" bindtap="confirmDelGroup" data-id="{{item.id}}" data-name="{{item.name}}">删除</text>
+        <text wx:else class="gm-btn" bindtap="cancelRename">取消</text>
+      </view>
+    </view>
+    <view wx:if="{{groups.length === 0}}" style="color:var(--text-dim);font-size:26rpx;text-align:center;padding:20rpx;">暂无自定义分组</view>
+    <!-- 新建分组 -->
+    <view style="display:flex;gap:16rpx;margin-top:24rpx;">
+      <input class="gm-input" style="flex:1;" placeholder="输入分组名称" placeholder-style="color:#6e7681" value="{{newGroupName}}" bindinput="onNewGroupInput" maxlength="10"/>
+      <view class="btn btn-ok" style="flex:none;padding:0 24rpx;display:flex;align-items:center;" bindtap="createGroup">新建</view>
+    </view>
+    <view style="margin-top:28rpx;text-align:center;">
+      <view class="btn btn-cancel" bindtap="hideGroupMgr">关闭</view>
+    </view>
+  </view>
+</view>
+
+<!-- 删除分组确认 -->
+<view wx:if="{{showDelGroupModal}}" class="modal-mask">
+  <view class="modal modal-confirm">
+    <view class="modal-title">确认删除分组</view>
+    <view class="confirm-text">删除分组 <text style="color:var(--text);font-weight:600;">{{delGroupName}}</text>？<text style="display:block;font-size:24rpx;color:var(--text-dim);">组内基金将变为未分组</text></view>
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideDelGroupModal">取消</view>
+      <view class="btn btn-del" bindtap="executeDelGroup">确认删除</view>
+    </view>
+  </view>
+</view>
+
+<!-- 删除基金确认弹窗 -->
+<view wx:if="{{showDeleteModal}}" class="modal-mask" bindtap="hideDeleteModal">
+  <view class="modal modal-confirm" catch:tap="noop">
+    <view class="modal-title">确认删除</view>
+    <view class="confirm-text">确定要删除 <text style="color:var(--text);font-weight:600;">{{deleteName}}</text> 吗？</view>
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideDeleteModal">取消</view>
+      <view class="btn btn-del" bindtap="executeDelete">确认删除</view>
+    </view>
+  </view>
+</view>
+
+<!-- 新建分组快捷弹窗 -->
+<view wx:if="{{showQuickGroup}}" class="modal-mask">
+  <view class="modal">
+    <view class="modal-title">新建分组</view>
+    <input class="modal-input" placeholder="输入分组名称" placeholder-style="color:#6e7681" value="{{quickGroupName}}" bindinput="onQuickInput" maxlength="10"/>
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideQuickGroup">取消</view>
+      <view class="btn btn-ok" bindtap="confirmQuickGroup">确定</view>
+    </view>
+  </view>
+</view>
+<!-- 移动分组弹窗 -->
+<view wx:if="{{showMoveModal}}" class="modal-mask" bindtap="hideMoveModal">
+  <view class="modal" catch:tap="noop">
+    <view class="modal-title">移动到分组</view>
+    <view style="display:flex;flex-wrap:wrap;gap:16rpx;">
+      <view class="mv-item {{moveTargetGroupId === '' ? 'mv-sel' : ''}}" bindtap="moveFundToGroup" data-id="">未分组</view>
+      <view wx:for="{{groups}}" wx:key="id" class="mv-item {{moveTargetGroupId === item.id ? 'mv-sel' : ''}}" bindtap="moveFundToGroup" data-id="{{item.id}}">{{item.name}}</view>
+    </view>
+    <view style="margin-top:28rpx;text-align:center;">
+      <view class="btn btn-cancel" bindtap="hideMoveModal">关闭</view>
+    </view>
+  </view>
+</view>
+
+<!-- 重命名分组弹窗 -->
+<view wx:if="{{showRenameModal}}" class="modal-mask">
+  <view class="modal">
+    <view class="modal-title">重命名分组</view>
+    <input class="modal-input" placeholder="输入新名称" placeholder-style="color:#6e7681" value="{{renameGroupName}}" bindinput="onRenameInput" maxlength="10"/>
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideRenameModal">取消</view>
+      <view class="btn btn-ok" bindtap="confirmRenameTab">确定</view>
+    </view>
+  </view>
+</view>
