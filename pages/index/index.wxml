@@ -1,8 +1,42 @@
 <navigation-bar title="基金管理" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
 
-<!-- Tab 分组栏 -->
+<!-- 持仓概况 (仅持仓tab显示) -->
+<view wx:if="{{activeTab === 'position' && portfolio.items.length > 0}}" class="pf-summary">
+  <view class="pf-row">
+    <view class="pf-item">
+      <text class="pf-label">总资产</text>
+      <text class="pf-val">{{portfolio.totalMarketStr}}</text>
+    </view>
+    <view class="pf-item">
+      <text class="pf-label">总成本</text>
+      <text class="pf-val dim">{{portfolio.totalCostStr}}</text>
+    </view>
+    <view class="pf-item">
+      <text class="pf-label">持仓收益</text>
+      <text class="pf-val {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">
+        {{portfolio.totalProfitStr}}
+      </text>
+      <text class="pf-pct {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}" style="font-size:22rpx;">
+        {{portfolio.totalPctStr}}%
+      </text>
+    </view>
+  </view>
+</view>
+
+<!-- 主 Tab 栏：持仓 / 自选 -->
+<view class="main-tabs">
+  <view class="main-tab {{activeTab === 'position' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="position">
+    <text>持仓</text>
+    <text wx:if="{{activeTab === 'position' && portfolio.items.length > 0}}" class="main-tab-badge">{{portfolio.items.length}}</text>
+  </view>
+  <view class="main-tab {{activeTab === 'watch' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="watch">
+    自选
+  </view>
+</view>
+
+<!-- 分组 Tab 栏 -->
 <scroll-view class="tab-bar" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
- <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeTab === item.id ? 'tab-active' : ''}}" bindtap="switchTab" bindlongpress="longPressTab" data-id="{{item.id}}" data-name="{{item.name}}">
+  <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeGroup === item.id ? 'tab-active' : ''}}" bindtap="switchGroup" bindlongpress="longPressTab" data-id="{{item.id}}" data-name="{{item.name}}">
     {{item.name}}
   </view>
   <view class="tab-item tab-add-group" bindtap="showGroupMgr">+ 分组</view>
@@ -17,7 +51,7 @@
   <view wx:elif="{{displayFunds.length === 0}}" style="text-align:center;padding:240rpx 0 80rpx;">
     <text style="font-size:100rpx;opacity:0.4;">📊</text>
     <view style="margin-top:30rpx;color:var(--text-secondary);font-size:28rpx;line-height:1.6;">
-      还没有添加基金<text style="display:block;">点击下方按钮添加</text>
+      {{activeTab === 'position' ? '还没有持仓基金' : '还没有自选基金'}}<text style="display:block;">点击下方按钮添加</text>
     </view>
     <view style="margin-top:40rpx;padding:20rpx 60rpx;background:var(--accent);color:#000;border-radius:40rpx;font-weight:600;font-size:28rpx;display:inline-block;" bindtap="showAddModal">+ 添加基金</view>
   </view>
@@ -25,8 +59,10 @@
     <view wx:for="{{displayFunds}}" wx:key="code" class="card" bindtap="goDetail" data-index="{{index}}">
       <view class="card-top">
         <view class="card-info">
-          <text class="card-code">{{item.code}}</text>
-          <view class="card-name">{{item.name || '加载中'}}</view>
+          <view class="card-code-name">
+            <text class="card-code">{{item.code}}</text>
+            <text class="card-name">{{item.name || '加载中'}}</text>
+          </view>
         </view>
         <view class="card-price">
           <text class="card-nav">{{item.nav != null ? item.nav : '--'}}</text>
@@ -35,11 +71,23 @@
           </text>
         </view>
       </view>
+      <!-- 持仓盈亏行 (仅持仓tab) -->
+      <view wx:if="{{activeTab === 'position' && portfolio}}" class="card-pl">
+        <block wx:for="{{portfolio.items}}" wx:key="code" wx:for-item="pi">
+          <view wx:if="{{pi.code === item.code}}" class="pl-row">
+            <text class="pl-cost">成本 {{pi.pl.avgCostStr}} · {{pi.pl.sharesStr}}份</text>
+            <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
+              {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
+            </text>
+          </view>
+        </block>
+      </view>
       <view class="card-bottom">
-        <view class="c-suggest {{item.suggestion.action === 'buy' ? 's-buy' : item.suggestion.action === 'sell' ? 's-sell' : 's-hold'}}" catchtap="goDetail" data-index="{{index}}">
-          <text wx:if="{{item.suggestion.action === 'buy'}}">加仓</text>
-          <text wx:elif="{{item.suggestion.action === 'sell'}}">减仓</text>
-          <text wx:else>观望</text>
+        <view wx:if="{{activeTab === 'position'}}" class="c-action c-trade" catchtap="showTrade" data-index="{{index}}">
+          <text>交易</text>
+        </view>
+        <view wx:else class="c-type-tag {{item._type === 'position' ? 'c-type-pos' : 'c-type-watch'}}" catchtap="showSwitchType" data-index="{{index}}">
+          {{item._type === 'position' ? '持仓' : '自选'}}
         </view>
         <view class="c-group" catchtap="showMoveGroup" data-index="{{index}}">
           <text class="c-group-label">{{item._groupName}}</text>
@@ -58,8 +106,14 @@
 <view wx:if="{{showAddModal}}" class="modal-mask" bindtap="hideAddModal">
   <view class="modal" catch:tap="noop">
     <view class="modal-title">添加基金</view>
+    <!-- 类型选择 -->
+    <view class="modal-label">类型</view>
+    <view style="display:flex;gap:16rpx;">
+      <view class="type-pick {{addType === 'watch' ? 'type-pick-sel' : ''}}" bindtap="pickType" data-id="watch">加入自选</view>
+      <view class="type-pick {{addType === 'position' ? 'type-pick-sel' : ''}}" bindtap="pickType" data-id="position">加入持仓</view>
+    </view>
     <!-- 基金代码 -->
-    <view class="modal-label">基金代码</view>
+    <view class="modal-label" style="margin-top:20rpx;">基金代码</view>
     <input class="modal-input" placeholder="例如: 000001" placeholder-style="color:#6e7681" value="{{inputCode}}" bindinput="onInputCode" maxlength="6" type="number"/>
     <view class="modal-hint">输入6位数字基金代码</view>
     <!-- 分组选择 -->
@@ -73,6 +127,75 @@
     <view class="modal-btns">
       <view class="btn btn-cancel" bindtap="hideAddModal">取消</view>
       <view class="btn btn-ok {{adding ? 'btn-disabled' : ''}}" bindtap="addFund">确认添加</view>
+    </view>
+  </view>
+</view>
+
+<!-- 交易记录弹窗 -->
+<view wx:if="{{showTradeModal}}" class="modal-mask" bindtap="hideTrade">
+  <view class="modal" catch:tap="noop" style="width:640rpx;max-height:85vh;overflow-y:auto;">
+    <view class="modal-title">{{tradeFundName}}交易记录</view>
+    <!-- 当前盈亏 -->
+    <view wx:if="{{tradePl.shares > 0}}" class="trade-pl-summary">
+      <view class="tps-row">
+        <text class="tps-label">持仓份额</text><text class="tps-val">{{tradePl.sharesStr}}份</text>
+      </view>
+      <view class="tps-row">
+        <text class="tps-label">成本均价</text><text class="tps-val">{{tradePl.avgCostStr}}</text>
+      </view>
+      <view class="tps-row">
+        <text class="tps-label">持仓市值</text><text class="tps-val">{{tradePl.marketValueStr}}</text>
+      </view>
+      <view class="tps-row tps-profit {{tradePl.profit >= 0 ? 'red' : 'green'}}">
+        <text class="tps-label">浮动盈亏</text>
+<text class="tps-val">{{tradePl.profitStr}} ({{tradePl.profitPctStr}}%)</text>
+      </view>
+    </view>
+    <view wx:elif="{{tradeFundNav}}" style="text-align:center;padding:20rpx;color:var(--text-dim);font-size:24rpx;">
+      暂无交易记录，当前净值 {{tradeFundNav}}
+    </view>
+    <!-- 历史交易 -->
+    <view wx:if="{{tradeRecords.length > 0}}" class="trade-hist">
+      <view class="sec-title-sm">历史记录</view>
+      <view wx:for="{{tradeRecords}}" wx:key="id" class="tr-item">
+        <view class="tr-left">
+          <text class="tr-type {{item.type === 'buy' ? 'red' : 'green'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
+          <text class="tr-date">{{item.date}}</text>
+        </view>
+        <view class="tr-right">
+          <text class="tr-detail">{{item.shares}}份 / {{item.amountStr}}元</text>
+          <text class="tr-del" bindtap="deleteTrade" data-index="{{index}}">✕</text>
+        </view>
+      </view>
+    </view>
+    <!-- 新增交易 -->
+    <view class="trade-form">
+      <view class="sec-title-sm">新增记录</view>
+      <view style="display:flex;gap:16rpx;margin-bottom:16rpx;">
+        <view class="type-pick {{tradeType === 'buy' ? 'type-pick-sel' : ''}}" bindtap="onTradeType" data-id="buy" style="flex:1;text-align:center;">买入</view>
+        <view class="type-pick {{tradeType === 'sell' ? 'type-pick-sel' : ''}}" bindtap="onTradeType" data-id="sell" style="flex:1;text-align:center;">卖出</view>
+      </view>
+      <input class="modal-input" style="margin-bottom:12rpx;" placeholder="份额" placeholder-style="color:#6e7681" value="{{tradeShares}}" bindinput="onTradeShares" type="digit"/>
+      <input class="modal-input" style="margin-bottom:12rpx;" placeholder="金额 (元)" placeholder-style="color:#6e7681" value="{{tradeAmount}}" bindinput="onTradeAmount" type="digit"/>
+      <input class="modal-input" placeholder="日期" placeholder-style="color:#6e7681" value="{{tradeDate}}" bindinput="onTradeDate"/>
+      <view class="modal-btns">
+        <view class="btn btn-cancel" bindtap="hideTrade">关闭</view>
+        <view class="btn btn-ok" bindtap="addTrade">记录</view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- 切换类型弹窗 -->
+<view wx:if="{{showSwitchTypeModal}}" class="modal-mask" bindtap="hideSwitchType">
+  <view class="modal" catch:tap="noop">
+    <view class="modal-title">切换状态</view>
+    <view style="display:flex;gap:16rpx;">
+      <view class="type-pick {{switchTypeTarget === 'watch' ? 'type-pick-sel' : ''}}" bindtap="confirmSwitchType" data-id="watch">自选</view>
+      <view class="type-pick {{switchTypeTarget === 'position' ? 'type-pick-sel' : ''}}" bindtap="confirmSwitchType" data-id="position">持仓</view>
+    </view>
+    <view style="margin-top:28rpx;text-align:center;">
+      <view class="btn btn-cancel" bindtap="hideSwitchType">关闭</view>
     </view>
   </view>
 </view>
@@ -92,7 +215,6 @@
       </view>
     </view>
     <view wx:if="{{groups.length === 0}}" style="color:var(--text-dim);font-size:26rpx;text-align:center;padding:20rpx;">暂无自定义分组</view>
-    <!-- 新建分组 -->
     <view style="display:flex;gap:16rpx;margin-top:24rpx;">
       <input class="gm-input" style="flex:1;" placeholder="输入分组名称" placeholder-style="color:#6e7681" value="{{newGroupName}}" bindinput="onNewGroupInput" maxlength="10"/>
       <view class="btn btn-ok" style="flex:none;padding:0 24rpx;display:flex;align-items:center;" bindtap="createGroup">新建</view>
@@ -138,6 +260,7 @@
     </view>
   </view>
 </view>
+
 <!-- 移动分组弹窗 -->
 <view wx:if="{{showMoveModal}}" class="modal-mask" bindtap="hideMoveModal">
   <view class="modal" catch:tap="noop">

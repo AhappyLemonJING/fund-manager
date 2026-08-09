@@ -27,7 +27,26 @@ page {
   display: flex; align-items: center; gap: 16rpx;
 }
 
-/* 板块标签 */
+/* 走势图 */
+.chart-ranges {
+  display: flex; gap: 12rpx; margin-bottom: 12rpx;
+}
+.cr-item {
+  padding: 8rpx 24rpx; border-radius: 20rpx; font-size: 22rpx;
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.cr-active {
+  background: rgba(212,168,83,0.18); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+.chart-loading, .chart-empty {
+  text-align: center; padding: 60rpx 0; font-size: 24rpx; color: var(--text-dim);
+}
+.chart-canvas-wrap {
+  width: 100%; height: 360rpx; margin-top: 8rpx;
+  overflow: hidden;
+}
+.chart-canvas-wrap canvas { display: block; width: 100%; height: 100%; }/* 板块标签 */
 .tag-row { display: flex; flex-wrap: wrap; gap: 14rpx; }
 .tag {
   padding: 8rpx 24rpx; border-radius: 30rpx; font-size: 24rpx;
@@ -61,10 +80,7 @@ page {
 /* 加载和状态 */
 .loading-line { font-size: 24rpx; color: var(--text-dim); padding: 12rpx 0; }
 .loading-tag { font-size: 20rpx; color: var(--accent); font-weight: 400; letter-spacing: 0; }
-.stats-tag {
-  font-size: 20rpx; font-weight: 400; letter-spacing: 0;
-}
-.stats-tag { color: var(--text-dim); }
+.stats-tag { font-size: 20rpx; font-weight: 400; letter-spacing: 0; color: var(--text-dim); }
 .error-line { font-size: 24rpx; color: var(--red); padding: 12rpx 0; }
 .empty-line { font-size: 24rpx; color: var(--text-dim); padding: 12rpx 0; }
 
@@ -83,5 +99,20 @@ page {
 
 .news-time { font-size: 20rpx; color: var(--text-dim); }
 .news-stale { opacity: 0.5; }
-
 .news-source { font-size: 18rpx; color: var(--accent); padding: 2rpx 10rpx; border: 1px solid var(--accent); border-radius: 10rpx; flex-shrink: 0; margin-left: 4rpx; }
+
+/* ========== 双区布局 ========== */
+.detail-body { width: 100%; box-sizing: border-box; overflow-x: hidden; 
+  flex: 1; display: flex; flex-direction: column;
+  min-height: 0;
+}
+.detail-static { width: 100%; box-sizing: border-box; 
+  flex: none; padding: 0 32rpx;
+  overflow: visible;
+}
+.detail-scroll {
+  flex: 1; min-height: 0;
+  width: 100%; box-sizing: border-box;
+  padding: 0 32rpx 48rpx;
+  overflow-x: hidden;
+}

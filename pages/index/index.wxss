@@ -1,84 +1,96 @@
 page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
-/* ========== Tab 分组栏 ========== */
+/* ========== 持仓概况 ========== */
+.pf-summary {
+  background: var(--bg-card); border: 1px solid var(--border);
+  padding: 24rpx 28rpx; margin: 0 32rpx 16rpx;
+  border-radius: 16rpx;
+}
+.pf-row { display: flex; justify-content: space-between; }
+.pf-item { display: flex; flex-direction: column; align-items: center; gap: 4rpx; }
+.pf-label { font-size: 22rpx; color: var(--text-dim); }
+.pf-val { font-size: 36rpx; font-weight: 700; }
+.pf-val.dim { color: var(--text-secondary); }
+.pf-pct { display: block; }
+
+/* ========== 主 Tab 栏 ========== */
+.main-tabs {
+  display: flex; padding: 16rpx 32rpx 0; gap: 12rpx;
+}
+.main-tab {
+  flex: 1; text-align: center; padding: 16rpx 0;
+  font-size: 28rpx; font-weight: 600; color: var(--text-secondary);
+  border-bottom: 3rpx solid transparent; transition: all 0.15s;
+  position: relative;
+}
+.main-tab-active { color: var(--accent); border-bottom-color: var(--accent); }
+.main-tab-badge {
+  position: absolute; top: 6rpx; right: 8rpx;
+  background: var(--accent); color: #000; font-size: 20rpx;
+  padding: 2rpx 10rpx; border-radius: 20rpx; font-weight: 700;
+}
+
+/* ========== 分组 Tab 栏 ========== */
 .tab-bar {
   white-space: nowrap;
-  padding: 16rpx 24rpx 12rpx;
+  padding: 12rpx 24rpx 12rpx;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  flex: none;
-  height: 80rpx;
+  flex: none; height: 72rpx;
 }
 .tab-item {
   display: inline-block;
-  padding: 10rpx 28rpx;
-  font-size: 26rpx;
-  color: var(--text-secondary);
-  border-radius: 30rpx;
-  margin-right: 12rpx;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  padding: 8rpx 24rpx; font-size: 24rpx; color: var(--text-secondary);
+  border-radius: 24rpx; margin-right: 10rpx;
+  background: var(--bg-input); border: 1px solid var(--border);
   transition: all 0.15s;
 }
-.tab-active {
-  background: var(--accent);
-  color: #000;
-  border-color: var(--accent);
-  font-weight: 600;
+.tab-active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.tab-add-group {
+  font-size: 22rpx; padding: 8rpx 20rpx; color: var(--accent);
+  background: rgba(212,168,83,0.1); border: 1px dashed var(--accent); font-weight: 600;
 }
-.tab-mgr {
-  font-size: 22rpx;
-  padding: 10rpx 16rpx;
-  color: var(--text-dim);
-}
- .tab-add-group {
-   font-size: 24rpx;
-   padding: 10rpx 24rpx;
-   color: var(--accent);
-   background: rgba(212,168,83,0.1);
-   border: 1px dashed var(--accent);
-   font-weight: 600;
- }
 
 /* ========== 基金卡片 ========== */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 24rpx;
-  padding: 28rpx 28rpx 22rpx;
-  margin-bottom: 20rpx;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 24rpx; padding: 24rpx 28rpx 16rpx; margin-bottom: 16rpx;
   transition: all 0.2s;
 }
 .card:active { opacity: 0.85; transform: scale(0.985); }
-.card-top {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 24rpx; margin-bottom: 20rpx; overflow: hidden;
-}
+.card-top { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; overflow: hidden; }
 .card-info { flex: 1; min-width: 0; overflow: hidden; }
-.card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; }
+.card-code-name { display: flex; align-items: baseline; gap: 12rpx; overflow: hidden; }
+.card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; flex-shrink: 0; }
 .card-name {
-  font-size: 30rpx; font-weight: 700; margin-top: 6rpx;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 30rpx; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .card-price { text-align: right; flex-shrink: 0; }
 .card-nav { font-size: 34rpx; font-weight: 700; display: block; }
-.card-pct { font-size: 26rpx; font-weight: 600; margin-top: 4rpx; display: block; }
+.card-pct { font-size: 26rpx; font-weight: 600; display: block; }
+
+/* 持仓盈亏行 */
+.card-pl { padding: 12rpx 0 6rpx; }
+.pl-row { display: flex; justify-content: space-between; align-items: center; }
+.pl-cost { font-size: 22rpx; color: var(--text-dim); }
+.pl-profit { font-size: 26rpx; font-weight: 700; }
 
 /* bottom row */
 .card-bottom {
-  display: flex; align-items: center; gap: 16rpx;
-  padding-top: 18rpx; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12rpx;
+  padding-top: 14rpx; border-top: 1px solid var(--border);
 }
-.c-suggest {
-  padding: 8rpx 18rpx; border-radius: 6rpx;
+.c-action {
+  padding: 6rpx 16rpx; border-radius: 6rpx;
   font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx;
 }
-.s-buy { background: var(--red-bg); color: var(--red); }
-.s-sell { background: var(--green-bg); color: var(--green); }
-.s-hold { background: var(--blue-bg); color: var(--blue); }
+.c-trade { background: rgba(212,168,83,0.15); color: var(--accent); border: 1px solid rgba(212,168,83,0.3); }
+.c-type-tag { padding: 6rpx 16rpx; border-radius: 6rpx; font-size: 22rpx; font-weight: 700; }
+.c-type-pos { background: var(--red-bg); color: var(--red); }
+.c-type-watch { background: var(--blue-bg); color: var(--blue); }
 .c-group {
   flex: 1; display: flex; align-items: center; justify-content: center;
-  gap: 4rpx; padding: 8rpx 0;
+  gap: 4rpx; padding: 6rpx 0;
 }
 .c-group-label { font-size: 22rpx; color: var(--text-dim); }
 .c-group-arrow { font-size: 24rpx; color: var(--text-dim); margin-left: 2rpx; }
@@ -90,6 +102,39 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 }
 .c-del:active { background: var(--red-bg); color: var(--red); border-color: var(--red); }
 
+/* ========== 类型选择 ========== */
+.type-pick {
+  padding: 14rpx 28rpx; border-radius: 24rpx; font-size: 26rpx;
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.type-pick-sel { background: rgba(212,168,83,0.18); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* ========== 交易记录弹窗 ========== */
+.trade-pl-summary {
+  background: var(--bg-input); border-radius: 14rpx;
+  padding: 20rpx 24rpx; margin-bottom: 20rpx;
+}
+.tps-row { display: flex; justify-content: space-between; padding: 6rpx 0; }
+.tps-label { font-size: 24rpx; color: var(--text-dim); }
+.tps-val { font-size: 24rpx; font-weight: 600; }
+.tps-profit .tps-val { font-size: 28rpx; }
+.sec-title-sm { font-size: 22rpx; color: var(--text-dim); margin-bottom: 12rpx; letter-spacing: 2rpx; }
+.trade-hist { margin-bottom: 24rpx; }
+.tr-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12rpx 16rpx; background: var(--bg-input);
+  border-radius: 12rpx; margin-bottom: 8rpx;
+}
+.tr-left { display: flex; gap: 12rpx; align-items: center; }
+.tr-type { font-size: 22rpx; font-weight: 700; padding: 2rpx 12rpx; border-radius: 8rpx; }
+.tr-type.red { background: var(--red-bg); }
+.tr-type.green { background: var(--green-bg); }
+.tr-date { font-size: 22rpx; color: var(--text-dim); }
+.tr-right { display: flex; gap: 12rpx; align-items: center; }
+.tr-detail { font-size: 22rpx; color: var(--text-secondary); }
+.tr-del { color: var(--text-dim); font-size: 24rpx; padding: 4rpx 8rpx; }
+.tr-del:active { color: var(--red); }
+.trade-form { margin-top: 8rpx; }
 
 /* 分组标签 */
 .mv-item {
@@ -118,9 +163,9 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   color: var(--text); width: 100%; height:auto; box-sizing: border-box;
 }
 .modal-hint { font-size: 22rpx; color: var(--text-dim); margin-top: 10rpx; }
-.modal-btns { display: flex; gap: 20rpx; margin-top: 36rpx; }
+.modal-btns { display: flex; gap: 20rpx; margin-top: 28rpx; }
 .btn {
-  flex: 1; text-align: center; padding: 20rpx 0;
+  flex: 1; text-align: center; padding: 18rpx 0;
   border-radius: 16rpx; font-weight: 600; font-size: 28rpx;
 }
 .btn-cancel { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
@@ -132,31 +177,15 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 /* ========== 分组选择器 ========== */
 .group-picker {
-  white-space: nowrap;
-  padding: 4rpx 0;
-  flex: none;
-  height: 60rpx;
+  white-space: nowrap; padding: 4rpx 0; flex: none; height: 60rpx;
 }
 .gp-item {
-  display: inline-block;
-  padding: 8rpx 22rpx;
-  font-size: 24rpx;
-  color: var(--text-secondary);
-  border-radius: 24rpx;
-  margin-right: 12rpx;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  display: inline-block; padding: 8rpx 22rpx; font-size: 24rpx;
+  color: var(--text-secondary); border-radius: 24rpx; margin-right: 12rpx;
+  background: var(--bg-input); border: 1px solid var(--border);
 }
-.gp-sel {
-  background: rgba(212,168,83,0.18);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
-}
-.gp-new {
-  color: var(--accent);
-  border-style: dashed;
-}
+.gp-sel { background: rgba(212,168,83,0.18); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.gp-new { color: var(--accent); border-style: dashed; }
 
 /* ========== 分组管理 ========== */
 .gm-row {

@@ -80,12 +80,115 @@ App({
     this.saveGroupMap(map);
   },
 
+  // ============ 基金类型 (持仓 position / 自选 watch) ============
+
+  loadFundTypes: function() {
+    try { return wx.getStorageSync('fund_types') || {}; } catch (e) { return {}; }
+  },
+
+  saveFundTypes: function(types) {
+    wx.setStorageSync('fund_types', types);
+  },
+
+  setFundType: function(fundCode, type) {
+    var types = this.loadFundTypes();
+    types[fundCode] = type;
+    this.saveFundTypes(types);
+  },
+
+  getFundType: function(fundCode) {
+    var types = this.loadFundTypes();
+    return types[fundCode] || 'watch';
+  },
+
+  // ============ 交易记录 & 盈亏 ============
+
+  loadTrades: function(code) {
+    try {
+      var all = wx.getStorageSync('fund_trades') || {};
+      return all[code] || [];
+    } catch (e) { return []; }
+  },
+
+  saveTrades: function(code, trades) {
+    var all = {};
+    try { all = wx.getStorageSync('fund_trades') || {}; } catch (e) {}
+    all[code] = trades;
+    wx.setStorageSync('fund_trades', all);
+  },
+
+  addTrade: function(code, trade) {
+    var trades = this.loadTrades(code);
+    trades.push(trade);
+    this.saveTrades(code, trades);
+    return trades;
+  },
+
+  deleteTrade: function(code, index) {
+    var trades = this.loadTrades(code);
+    trades.splice(index, 1);
+    this.saveTrades(code, trades);
+    return trades;
+  },
+
+  calcProfitLoss: function(code, nav) {
+    var trades = this.loadTrades(code);
+    var totalShares = 0;
+    var totalCost = 0;
+    for (var i = 0; i < trades.length; i++) {
+      var t = trades[i];
+      if (t.type === 'buy') {
+        totalShares += t.shares;
+        totalCost += t.amount;
+      } else if (t.type === 'sell') {
+        totalShares -= t.shares;
+        totalCost -= t.amount;
+      }
+    }
+    var avgCost = totalShares > 0 ? totalCost / totalShares : 0;
+    var marketValue = totalShares * nav;
+    var profit = marketValue - totalCost;
+    var profitPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+    return {
+      shares: totalShares, cost: totalCost, avgCost: avgCost,
+      marketValue: marketValue, profit: profit, profitPct: profitPct
+    };
+  },
+
+  // ============ 聚合全部持仓总览 ============
+
+  calcPortfolio: function(funds) {
+    var totalCost = 0;
+    var totalMarket = 0;
+    var list = [];
+    for (var i = 0; i < funds.length; i++) {
+      var f = funds[i];
+      var type = this.getFundType(f.code);
+      if (type !== 'position') continue;
+      var nav = parseFloat(f.nav) || 0;
+      if (nav <= 0) continue;
+      var pl = this.calcProfitLoss(f.code, nav);
+      if (pl.shares <= 0) continue;
+      totalCost += pl.cost;
+      totalMarket += pl.marketValue;
+      list.push({ code: f.code, name: f.name, nav: nav, pl: pl });
+    }
+    var totalProfit = totalMarket - totalCost;
+    var totalPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+    return { totalCost: totalCost, totalMarket: totalMarket, totalProfit: totalProfit,
+      totalPct: totalPct, items: list };
+  },
+
   // ============ API ============
 
-  callApi: function(type, code) {
+  callApi: function(type, code, params) {
+    var data = { type: type, code: code };
+    if (params) {
+      Object.keys(params).forEach(function(k) { data[k] = params[k]; });
+    }
     return wx.cloud.callFunction({
       name: 'fundApi',
-      data: { type: type, code: code }
+      data: data
     }).then(function(res) { return res.result; });
   },
 
@@ -117,6 +220,73 @@ App({
       }
       return null;
     });
+  },
+
+  // 拉取历史净值 (多页)
+  fetchHistory: function(code, days) {
+    var self = this;
+    var all = [];
+    var pageSize = 20;
+    var pages = Math.ceil(days / pageSize);
+    var endDate = new Date();
+    var startDate = new Date(endDate.getTime() - days * 86400000);
+    var sd = startDate.getFullYear() + '-' +
+      String(startDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(startDate.getDate()).padStart(2, '0');
+    var ed = endDate.getFullYear() + '-' +
+      String(endDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(endDate.getDate()).padStart(2, '0');
+
+    function fetchPage(page) {
+      return self.callApi('history', code, {
+        pageIndex: page, pageSize: pageSize,
+        startDate: sd, endDate: ed
+      }).then(function(data) {
+        if (data.list && data.list.length > 0) {
+          all = all.concat(data.list);
+        }
+        if (page < pages && data.list && data.list.length === pageSize) {
+          return fetchPage(page + 1);
+        }
+        return all;
+      });
+    }
+    return fetchPage(1).then(function(list) {
+      // 反转按日期升序，取最近 days 条
+      list.reverse();
+      if (list.length > days) list = list.slice(list.length - days);
+      return list.map(function(item) {
+        return {
+          date: item.FSRQ,
+          nav: parseFloat(item.DWJZ),
+          changePct: parseFloat(item.JZZZL) || 0
+        };
+      });
+    });
+  },
+
+  // 拉取沪深300基准
+  fetchBenchmark: function(days) {
+    var endDate = new Date();
+    var startDate = new Date(endDate.getTime() - days * 86400000);
+    var sd = startDate.getFullYear() + '-' +
+      String(startDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(startDate.getDate()).padStart(2, '0');
+    var ed = endDate.getFullYear() + '-' +
+      String(endDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(endDate.getDate()).padStart(2, '0');
+    return this.callApi('benchmark', '000300', { startDate: sd, endDate: ed })
+      .then(function(data) {
+        var list = (data.Data && data.Data.LSJZList) || (data.list || []);
+        list.reverse();
+        if (list.length > days) list = list.slice(list.length - days);
+        return list.map(function(item) {
+          return {
+            date: item.FSRQ,
+            nav: parseFloat(item.DWJZ)
+          };
+        });
+      });
   },
 
   // ============ 持仓 & 新闻 & 分析 ============
