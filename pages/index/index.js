@@ -60,6 +60,9 @@ Page({
     tradePl: null,
     // refresh
     refreshing: false,
+    syncing: false,
+    lastSyncTime: '',
+    showSyncConfirm: false,
     // 持仓手动覆盖编辑
     editMarketValue: '',
     editProfit: '',
@@ -88,6 +91,9 @@ Page({
 
   onShow: function() {
     this.startAutoRefresh();
+    // 仅在首次打开时完成同步，切换 tab / 切换页面不再重复同步
+    if (!app.globalData._synced) this.autoSync();
+    else this.setData({ lastSyncTime: app.globalData._lastSyncTime || '' });
     if (app.globalData.funds.length > 0) {
       this.setData({ funds: app.globalData.funds });
       this.applyFilter();
@@ -171,6 +177,14 @@ Page({
     this.applyFilter();
   },
 
+    goMarket: function() {
+    wx.navigateTo({ url: '/pages/market/market' });
+  },
+
+  goDiscover: function() {
+    wx.navigateTo({ url: '/pages/discover/discover' });
+  },
+
   longPressTab: function(e) {
    var id = e.currentTarget.dataset.id;
     var name = e.currentTarget.dataset.name;
@@ -232,17 +246,17 @@ Page({
 
   updatePortfolio: function() {
     var pf = app.calcPortfolio(app.globalData.funds);
-    pf.totalMarketStr = pf.totalMarket.toFixed(0);
-    pf.totalCostStr = pf.totalCost.toFixed(0);
+    pf.totalMarketStr = pf.totalMarket.toFixed(2);
+    pf.totalCostStr = pf.totalCost.toFixed(2);
     var profitSign = pf.totalProfit >= 0 ? '+' : '';
-    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(0);
+    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(2);
     pf.totalPctStr = profitSign + pf.totalPct.toFixed(2);
     for (var i = 0; i < pf.items.length; i++) {
       var pi = pf.items[i].pl;
       pi.avgCostStr = pi.avgCost.toFixed(3);
       pi.sharesStr = pi.shares.toFixed(0);
-      pi.marketValueStr = pi.marketValue.toFixed(0);
-      pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(0);
+      pi.marketValueStr = pi.marketValue.toFixed(2);
+      pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(2);
       pi.profitPctStr = (pi.profitPct >= 0 ? '+' : '') + pi.profitPct.toFixed(2);
       if (pi.holdingDays > 0) {
         pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
@@ -406,8 +420,8 @@ Page({
       tradeType: 'buy',
     tradeIsBefore3pm: true,
       tradePl: pl,
-      editMarketValue: ov ? String(ov.marketValue.toFixed(0)) : '',
-      editProfit: ov ? String(ov.profit.toFixed(0)) : '',
+      editMarketValue: ov ? String(ov.marketValue.toFixed(2)) : '',
+      editProfit: ov ? String(ov.profit.toFixed(2)) : '',
       editHoldingDays: ov ? String(ov.holdingDays) : '',
       tradeIsBefore3pm: true,
       tradeDate: now.getFullYear() + '-' +
@@ -589,25 +603,39 @@ Page({
     this.setData({ showDeleteModal: true, deleteName: fund.name || fund.code, deleteIndex: idx });
   },
   hideDeleteModal: function() { this.setData({ showDeleteModal: false }); },
-  executeDelete: function() {
-    var idx = this.data.deleteIndex;
-    if (idx < 0) return;
-    var fund = this.data.displayFunds[idx];
-    app.setFundGroup(fund.code, null);
-    // 从 funds 中找到并删除
-    var allFunds = app.globalData.funds;
-    for (var i = 0; i < allFunds.length; i++) {
-      if (allFunds[i].code === fund.code) {
-        allFunds.splice(i, 1);
-        break;
-      }
-    }
-    app.saveCodes(allFunds.map(function(f) { return f.code; }));
-    this.setData({ funds: allFunds, showDeleteModal: false });
-    this.applyFilter();
-    this.updatePortfolio();
-    wx.showToast({ title: '已删除', icon: 'none' });
-  },
+ executeDelete: function() {
+   var idx = this.data.deleteIndex;
+   if (idx < 0) return;
+   var fund = this.data.displayFunds[idx];
+  var code = fund.code;
+  app.setFundGroup(code, null);
+  // 从 funds 中找到并删除
+   var allFunds = app.globalData.funds;
+   for (var i = 0; i < allFunds.length; i++) {
+     if (allFunds[i].code === code) {
+       allFunds.splice(i, 1);
+       break;
+     }
+   }
+   app.saveCodes(allFunds.map(function(f) { return f.code; }));
+   // 清理 fund_types
+   var types = app.loadFundTypes();
+   delete types[code];
+   app.saveFundTypes(types);
+  // 清理 fund_trades
+  var allTrades = wx.getStorageSync('fund_trades') || {};
+  if (allTrades[code]) {
+    delete allTrades[code];
+    wx.setStorageSync('fund_trades', allTrades);
+    app._touch('trades');
+  }
+   // 清理 position_overrides
+   app.setPosOverride(code, null);
+   this.setData({ funds: allFunds, showDeleteModal: false });
+   this.applyFilter();
+   this.updatePortfolio();
+   wx.showToast({ title: '已删除', icon: 'none' });
+ },
 
   // ============ 跳转详情 ============
 
@@ -688,5 +716,31 @@ Page({
     this.buildGroupTabs();
     this.applyFilter();
     wx.showToast({ title: '已重命名', icon: 'none', duration: 1000 });
+  },
+
+  // ============ 云同步 ============
+
+  autoSync: function() {
+    if (app.globalData._synced) return;
+    if (this.data.syncing) return;
+    var self = this;
+    self.setData({ syncing: true });
+    app.syncData().then(function(result) {
+      var now = new Date();
+      var ts = now.getHours().toString().padStart(2, '0') + ':' +
+               now.getMinutes().toString().padStart(2, '0');
+      app.globalData._synced = true;
+      app.globalData._lastSyncTime = ts;
+      self.setData({ syncing: false, lastSyncTime: ts });
+      if (result.ok) {
+        app.globalData.groups = app.loadGroups();
+        app.globalData.groupMap = app.loadGroupMap();
+        self.buildGroupTabs();
+        var codes = app.loadCodes();
+        if (codes.length > 0) self.loadFunds(codes);
+      }
+    }).catch(function() {
+      self.setData({ syncing: false });
+    });
   },
 });
