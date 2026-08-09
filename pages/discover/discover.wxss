@@ -105,35 +105,35 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 .card {
   background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 24rpx; padding: 24rpx 28rpx 16rpx;
+  border-radius: 24rpx; padding: 16rpx 28rpx 10rpx;
   margin: 0 32rpx 16rpx;
   transition: all 0.2s;
 }
 .card:active { opacity: 0.85; transform: scale(0.985); }
 
 .card-row { display: flex; justify-content: space-between; align-items: flex-start; }
-.card-left { flex: 1; min-width: 0; overflow: hidden; }
-.card-code { font-size: 22rpx; color: var(--text-dim); letter-spacing: 2rpx; display: block; }
+.card-left { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2rpx; }
+.card-code { font-size: 22rpx; color: var(--text-dim); letter-spacing: 2rpx; line-height: 1.2; }
 .card-name {
-  font-size: 30rpx; font-weight: 700; margin-top: 4rpx;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+  font-size: 30rpx; font-weight: 700; margin-top: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2;
 }
-.card-right { text-align: right; flex-shrink: 0; margin-left: 16rpx; }
-.card-nav { font-size: 34rpx; font-weight: 700; display: block; }
-.card-daily { font-size: 26rpx; font-weight: 600; display: block; margin-top: 4rpx; }
+.card-right { text-align: right; flex-shrink: 0; margin-left: 16rpx; display: flex; flex-direction: column; gap: 0; }
+.card-nav { font-size: 34rpx; font-weight: 700; line-height: 1.1; }
+.card-daily { font-size: 26rpx; font-weight: 600; line-height: 1.1; margin-top: 0; }
 
 .card-perf {
-  display: flex; gap: 12rpx; padding: 16rpx 0;
-  border-top: 1px solid var(--border); margin-top: 14rpx;
+  display: flex; gap: 12rpx; padding: 6rpx 0;
+  border-top: 1px solid var(--border); margin-top: 6rpx;
 }
 .perf-item { flex: 1; text-align: center; min-width: 0; }
-.perf-label { font-size: 20rpx; color: var(--text-dim); display: block; margin-bottom: 4rpx; }
-.perf-val { font-size: 24rpx; font-weight: 700; }
+.perf-label { font-size: 20rpx; color: var(--text-dim); margin-bottom: 2rpx; line-height: 1.2; }
+.perf-val { font-size: 24rpx; font-weight: 700; line-height: 1.2; }
 .perf-size { color: var(--text-secondary); }
 
 .card-actions {
   display: flex; align-items: center; gap: 12rpx;
-  padding-top: 14rpx; border-top: 1px solid var(--border);
+  padding-top: 6rpx; border-top: 1px solid var(--border);
 }
 .ca-btn {
   flex: 1; text-align: center; padding: 12rpx 0;

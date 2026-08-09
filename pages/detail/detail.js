@@ -24,6 +24,10 @@ Page({
     holdingsError: '',
     newsError: '',
     stats: null,
+    aiSectors: [],
+    sectorNewsMap: {},
+    loadingSectorNews: false,
+    sectorNewsError: '',
     // 走势图
     chartLoading: false,
     chartRange: '1M',  // 1M | 3M | 6M | 1Y
@@ -384,6 +388,22 @@ Page({
     });
   },
 
+  loadSectorNews: function(sectors) {
+    var self = this;
+    if (!sectors || sectors.length === 0) return;
+    var tasks = sectors.map(function(s) {
+      return app.fetchSectorNews(s.name).then(function(news) {
+        return { sector: s.name, news: news.slice(0, 8) };
+      }).catch(function() { return { sector: s.name, news: [] }; });
+    });
+    Promise.all(tasks).then(function(results) {
+      var map = {};
+      results.forEach(function(r) { map[r.sector] = r.news; });
+      self.setData({ sectorNewsMap: map, loadingSectorNews: false });
+    }).catch(function() {
+    });
+  },
+
  runAnalyze: function(stocks, newsMap) {
    var self = this;
    self.setData({ loadingAnalysis: true });
@@ -440,6 +460,18 @@ Page({
       var suggest = result.suggest || { action: 'hold', reason: '暂无分析' };
       var suggestDaily = result.suggestDaily || null;
       self.setData({ newsMap: mergedMap, suggest: suggest, suggestDaily: suggestDaily, stats: result.stats || null, aiPowered: result.aiPowered || false, loadingAnalysis: false });
+      var aiSectors = result.relatedSectors || [];
+      if (aiSectors.length > 0) {
+        self.setData({ aiSectors: aiSectors });
+        // 将 AI 分析的板块名合并到上方关联板块标签区（去重）
+        var existingSectors = self.data.sectors || [];
+        var merged = existingSectors.slice();
+        aiSectors.forEach(function(as) {
+          if (merged.indexOf(as.name) < 0) merged.push(as.name);
+        });
+        self.setData({ sectors: merged });
+        self.loadSectorNews(aiSectors);
+      }
       self.applySuggestion();
       var fund = app.globalData.funds[self._fundIndex];
       if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund.suggestDaily = suggestDaily; fund._holdingsLoaded = true; }

@@ -532,6 +532,17 @@ App({
     });
   },
 
+  fetchSectorNews: function(keyword) {
+    var self = this;
+    return wx.cloud.callFunction({
+      name: 'fundApi',
+      data: { type: 'sectornews', code: keyword, keyword: keyword }
+    }).then(function(res) {
+      var data = res.result;
+      return data.news || [];
+    });
+  },
+
  analyzeNews: function(stocks, newsMap, fundName) {
     var data = { stocks: stocks, newsMap: newsMap };
     if (fundName) data.fundName = fundName;

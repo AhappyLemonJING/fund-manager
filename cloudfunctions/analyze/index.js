@@ -154,8 +154,9 @@ exports.main = async (event) => {
   // 跑规则引擎（作为 AI 输入特征 + 降级备用）
   var rulesResult = runRulesEngine(stocks, newsMap);
 
-  // 尝试调用 DeepSeek AI 分析（标准版 + 融入当日涨跌幅版 并行）
+  // 尝试调用 DeepSeek AI 分析（标准版 + 融入当日涨跌幅版 + 板块分析 并行）
   var aiResult = null;
+  var sectorResult = null;
   var aiDailyResult = null;
   try {
     var promises = [callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, null)];
@@ -163,7 +164,9 @@ exports.main = async (event) => {
       promises.push(callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct));
     }
     var results = await Promise.all(promises);
-    aiResult = results[0];
+    sectorResult = await callDeepSeekSectors(stocks).catch(function(e) {
+      console.error('板块分析失败:', e.message || e);
+    });    aiResult = results[0];
     if (results.length > 1) aiDailyResult = results[1];
   } catch (e) {
     console.error('DeepSeek API 调用失败，降级为规则引擎:', e.message || e);
@@ -172,6 +175,7 @@ exports.main = async (event) => {
   if (aiResult) {
     aiResult.labeled = rulesResult.labeled;
     aiResult.stats = rulesResult.stats;
+    if (sectorResult) aiResult.relatedSectors = sectorResult.sectors || [];
     aiResult.aiPowered = true;
     if (aiDailyResult) {
       aiResult.suggestDaily = aiDailyResult.suggest;
@@ -618,6 +622,91 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
           resolve({ suggest: { action: aiOutput.action, reason: aiOutput.reason } });
         } catch (e) {
           reject(new Error('DeepSeek 响应解析失败: ' + e.message));
+        }
+      });
+    });
+
+    req.on('error', function(e) { reject(e); });
+    req.on('timeout', function() { req.abort(); reject(new Error('DeepSeek API 请求超时')); });
+    req.write(postData);
+    req.end();
+  });
+}
+
+// ============ AI 关联板块分析 ============
+
+function callDeepSeekSectors(stocks) {
+  return new Promise(function(resolve, reject) {
+    var apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
+      return reject(new Error('DEEPSEEK_API_KEY 未配置'));
+    }
+
+    if (!stocks || stocks.length === 0) {
+      return resolve({ sectors: [] });
+    }
+
+    var stockList = stocks.map(function(s) {
+      return s.name + '(' + s.code + ') 权重' + (s.weight || 0) + '%';
+    }).join('、');
+
+    var prompt =
+      '你是一位专业的A股行业分析师。\n\n' +
+      '以下是一只基金的前十大重仓股：\n' +
+      stockList + '\n\n' +
+      '请根据这些重仓股，分析它们主要涉及哪些A股行业/板块（例如：白酒、新能源、半导体、医药、AI、消费电子、银行、证券、军工等）。\n' +
+      '要求：\n' +
+      '1. 仅输出与该基金持仓直接相关的板块，不要泛泛列举不相干的板块\n' +
+      '2. 最多输出5个板块，按相关性从高到低排列\n' +
+      '3. 为每个板块给出简短的分析理由（10-15个字，说明为什么这些重仓股和该板块相关）\n' +
+      '4. 板块名称使用A股市场常见的名称（如"白酒"而非"白酒行业"）\n\n' +
+      '输出纯 JSON 格式，不要使用 markdown 代码块：\n' +
+      '{"sectors":[{"name":"板块名","reason":"理由"}]}';
+
+    var postData = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: '你是专业的A股行业分析师。输出纯 JSON，不输出任何额外文字。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 600,
+      stream: false
+    });
+
+    var https = require('https');
+    var url = require('url');
+    var parsedUrl = url.parse('https://api.deepseek.com/v1/chat/completions');
+
+    var options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Length': Buffer.byteLength(postData, 'utf8')
+      },
+      timeout: 25000
+    };
+
+    var req = https.request(options, function(res) {
+      var body = '';
+      res.on('data', function(chunk) { body += chunk; });
+      res.on('end', function() {
+        try {
+          var resp = JSON.parse(body);
+          var content = resp.choices && resp.choices[0] && resp.choices[0].message.content;
+          if (!content) return resolve({ sectors: [] });
+
+          var jsonStr = content.trim();
+          var jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+          var aiOutput = JSON.parse(jsonStr);
+          resolve({ sectors: aiOutput.sectors || [] });
+        } catch (e) {
+          resolve({ sectors: [] });
         }
       });
     });
