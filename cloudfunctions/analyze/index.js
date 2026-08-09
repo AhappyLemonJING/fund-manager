@@ -133,6 +133,7 @@ exports.main = async (event) => {
   var fundName = event.fundName || '';
   var navTrend = event.navTrend || null;
   var position = event.position || null;
+  var dailyChangePct = event.dailyChangePct != null ? event.dailyChangePct : null;
 
   // 先统计每只股票有多少新闻
   var totalNewsCount = 0;
@@ -153,10 +154,17 @@ exports.main = async (event) => {
   // 跑规则引擎（作为 AI 输入特征 + 降级备用）
   var rulesResult = runRulesEngine(stocks, newsMap);
 
-  // 尝试调用 DeepSeek AI 分析
+  // 尝试调用 DeepSeek AI 分析（标准版 + 融入当日涨跌幅版 并行）
   var aiResult = null;
+  var aiDailyResult = null;
   try {
-    aiResult = await callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position);
+    var promises = [callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, null)];
+    if (dailyChangePct != null) {
+      promises.push(callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct));
+    }
+    var results = await Promise.all(promises);
+    aiResult = results[0];
+    if (results.length > 1) aiDailyResult = results[1];
   } catch (e) {
     console.error('DeepSeek API 调用失败，降级为规则引擎:', e.message || e);
   }
@@ -165,8 +173,12 @@ exports.main = async (event) => {
     aiResult.labeled = rulesResult.labeled;
     aiResult.stats = rulesResult.stats;
     aiResult.aiPowered = true;
+    if (aiDailyResult) {
+      aiResult.suggestDaily = aiDailyResult.suggest;
+    }
     return aiResult;
   }
+
 
   // 降级：使用规则引擎结果
   rulesResult.aiPowered = false;
@@ -393,7 +405,7 @@ function computeDaysAgo(timeStr) {
   } catch (e) { return null; }
 }
 
-function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position) {
+function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct) {
   return new Promise(function(resolve, reject) {
     var apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
@@ -514,6 +526,13 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
         '持有天数: ' + (position.holdingDays || 0) + '天 | 持仓盈亏: ' + formatPct(position.profitPct) + '\n\n';
     }
 
+    var dailySection = '';
+    if (dailyChangePct != null) {
+      var direction = dailyChangePct >= 0 ? '上涨' : '下跌';
+      var magnitude = Math.abs(dailyChangePct) >= 2 ? '大幅' : Math.abs(dailyChangePct) >= 1 ? '' : '小幅';
+      dailySection = '【当日涨跌幅】' + magnitude + direction + formatPct(dailyChangePct) + '\n\n';
+    }
+
     var timeDistSection = '【新闻时效分布】\n' +
       '近3天内: ' + recent3d + '条 | 3-7天: ' + recent7d + '条 | 7天以上: ' + older7d + '条\n\n';
 
@@ -521,7 +540,7 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
       '你是一位专业的基金分析助手。请根据以下信息，对基金的投资操作给出建议。\n\n' +
       fundLabel +
       navSection +
-      posSection +
+      posSection + dailySection +
       '【新闻总览】共 ' + stats.totalNews + ' 条 | 利好' + stats.bullish + ' / 利空' + stats.bearish + ' / 中性' + stats.neutral + '\n' +
       timeDistSection +
       highWeightSection +
@@ -533,9 +552,10 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
       '1. 净值趋势与新闻信号的一致性：同向则强化结论，背离则需要重点权衡\n' +
       '2. 持仓盈亏的决策影响：浮盈时可更积极地考虑减仓，浮亏时加仓需更谨慎\n' +
       '3. 高权重持仓股的信号影响力远大于低权重股\n' +
-      '4. 近3天内的新闻参考价值显著高于7天以上的旧闻\n\n' +
+      '4. 近3天内的新闻参考价值显著高于7天以上的旧闻' + (dailyChangePct != null ? '\n' +
+      '5. 当日涨跌幅的短期信号：如果当日大幅下跌且中期趋势向好或利好密集→可能是短期错杀，考虑加仓；如果当日大幅上涨但趋势偏弱或利空密集→可能是情绪过热，考虑减仓；小幅波动应以中期趋势为主' : '') + '\n\n' +
       '最终输出纯 JSON 格式，不要使用 markdown 代码块：\n' +
-      '{"action":"buy|sell|hold","reason":"120-180字分析理由，涵盖以上四个维度的判断依据"}';
+      '{"action":"buy|sell|hold","reason":"120-180字分析理由，涵盖以上维度的判断依据"}';
 
     var postData = JSON.stringify({
       model: 'deepseek-chat',

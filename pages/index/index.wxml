@@ -97,6 +97,9 @@
        <view wx:if="{{activeTab === 'position'}}" class="c-action c-trade" catchtap="showTrade" data-index="{{index}}">
          <text>交易</text>
        </view>
+       <view wx:if="{{activeTab === 'position'}}" class="c-action c-invest" catchtap="showPlan" data-index="{{index}}">
+         <text>定投</text>
+       </view>
        <view wx:if="{{activeTab === 'position' && item._suggestLabel}}" class="c-suggest {{item._suggestClass}}">{{item._suggestLabel}}</view>
         <view wx:if="{{activeTab !== 'position'}}" class="c-type-tag {{item._type === 'position' ? 'c-type-pos' : 'c-type-watch'}}" catchtap="showSwitchType" data-index="{{index}}">
           {{item._type === 'position' ? '持仓' : '自选'}}
@@ -321,6 +324,75 @@
     <view class="modal-btns">
       <view class="btn btn-cancel" bindtap="hideRenameModal">取消</view>
       <view class="btn btn-ok" bindtap="confirmRenameTab">确定</view>
+    </view>
+  </view>
+</view>
+
+<!-- 定投计划弹窗 -->
+<view wx:if="{{showPlanModal}}" class="modal-mask" bindtap="hidePlan">
+  <view class="modal" catch:tap="noop" style="width:640rpx;max-height:85vh;overflow-y:auto;">
+    <view class="modal-title">{{planFundName}} 定投计划</view>
+
+    <!-- 已有计划列表 -->
+    <view wx:if="{{fundPlans.length > 0}}" class="plan-list">
+      <view wx:for="{{fundPlans}}" wx:key="id" class="plan-item {{item.active ? '' : 'plan-inactive'}}">
+        <view class="plan-info">
+          <view class="plan-period">{{item._periodLabel}}</view>
+          <view class="plan-amount">每期 {{item.amount}} 元</view>
+          <view class="plan-last">{{item._lastLabel}}</view>
+        </view>
+        <view class="plan-actions">
+          <text class="plan-btn plan-btn-toggle" bindtap="togglePlanActive" data-id="{{item.id}}">{{item.active ? '停用' : '启用'}}</text>
+          <text class="plan-btn plan-btn-exec" bindtap="executePlanNow" data-id="{{item.id}}">执行</text>
+          <text class="plan-btn" bindtap="editPlan" data-id="{{item.id}}">编辑</text>
+          <text class="plan-btn plan-btn-del" bindtap="deletePlan" data-id="{{item.id}}">删除</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 新增/编辑表单 -->
+    <view class="plan-form">
+      <view class="sec-title-sm">{{planEditId ? '编辑计划' : '新增计划'}}</view>
+      <!-- 金额 -->
+      <view class="plan-field">
+        <text class="plan-label">每期金额(元)</text>
+        <input class="modal-input" type="digit" placeholder="例如: 1000" placeholder-style="color:#6e7681" value="{{planAmount}}" bindinput="onPlanAmount"/>
+      </view>
+      <!-- 周期选择 -->
+      <view class="plan-field">
+        <text class="plan-label">定投周期</text>
+        <view class="plan-period-pick">
+          <view class="pp-item {{planPeriod === 'daily' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="daily">每日</view>
+          <view class="pp-item {{planPeriod === 'weekly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="weekly">每周</view>
+          <view class="pp-item {{planPeriod === 'biweekly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="biweekly">每两周</view>
+          <view class="pp-item {{planPeriod === 'monthly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="monthly">每月</view>
+        </view>
+      </view>
+      <!-- 周几选择 (每周/每两周) -->
+      <view wx:if="{{planPeriod === 'weekly' || planPeriod === 'biweekly'}}" class="plan-field">
+        <text class="plan-label">选择周几</text>
+        <view class="plan-day-pick">
+          <view wx:for="{{[0,1,2,3,4,5,6]}}" wx:key="*this" class="pd-item {{planDayOfWeek === item ? 'pd-sel' : ''}}" bindtap="onPlanDayOfWeek" data-id="{{item}}">
+            {{item === 0 ? '日' : (item === 1 ? '一' : (item === 2 ? '二' : (item === 3 ? '三' : (item === 4 ? '四' : (item === 5 ? '五' : '六')))))}}
+          </view>
+        </view>
+      </view>
+      <!-- 每月几号选择 -->
+      <view wx:if="{{planPeriod === 'monthly'}}" class="plan-field">
+        <text class="plan-label">选择日期</text>
+        <scroll-view class="plan-day-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+          <view wx:for="{{28}}" wx:key="*this" class="pd-item {{planDayOfMonth === item + 1 ? 'pd-sel' : ''}}" bindtap="onPlanDayOfMonth" data-id="{{item + 1}}">
+            {{item + 1}}
+          </view>
+        </scroll-view>
+      </view>
+      <!-- 按钮 -->
+      <view class="modal-btns">
+        <view wx:if="{{planEditId}}" class="btn btn-cancel" bindtap="cancelEdit">取消编辑</view>
+        <view wx:if="{{!planEditId}}" class="btn btn-cancel" bindtap="hidePlan">关闭</view>
+        <view wx:if="{{planEditId}}" class="btn btn-ok" bindtap="updatePlan">保存修改</view>
+        <view wx:if="{{!planEditId}}" class="btn btn-ok" bindtap="addPlan">创建计划</view>
+      </view>
     </view>
   </view>
 </view>

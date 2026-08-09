@@ -66,7 +66,18 @@ Page({
     // 持仓手动覆盖编辑
     editMarketValue: '',
     editProfit: '',
-    editHoldingDays: ''
+    editHoldingDays: '',
+    // 定投计划弹窗
+    showPlanModal: false,
+    planFundCode: "",
+    planFundName: "",
+    planFundNav: 0,
+    fundPlans: [],
+    planEditId: "",
+    planAmount: "",
+    planPeriod: "weekly",
+    planDayOfWeek: 1,
+    planDayOfMonth: 1,
   },
 
   noop: function() {},
@@ -100,6 +111,7 @@ Page({
      this.updatePortfolio();
       this.analyzeAllFunds();
    }
+    app.executeAllPlans();
   },
 
   onHide: function() {
@@ -239,7 +251,7 @@ Page({
     result.forEach(function(f) {
       f._groupName = groupName(f.code);
       f._type = app.getFundType(f.code);
-      var sug = f.suggestion;
+      var sug = f.suggestDaily || f.suggestion;
       if (sug) {
         if (sug.action === 'buy') { f._suggestLabel = '加仓'; f._suggestClass = 'red'; }
         else if (sug.action === 'sell') { f._suggestLabel = '减仓'; f._suggestClass = 'green'; }
@@ -316,10 +328,11 @@ Page({
         var pl = app.calcProfitLoss(code, nav);
         pl = app.applyPosOverrides(code, nav, pl);
         var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
-        return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position);
+        var dailyPct = parseFloat(fund.changePct) || null;
+        return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position, dailyPct);
       });
     }).then(function(result) {
-      if (result) fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' };
+      if (result) { fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' }; fund.suggestDaily = result.suggestDaily || null; }
       fund._holdingsLoaded = true;
       self.applyFilter();
       self.updatePortfolio();
@@ -821,5 +834,221 @@ Page({
     }).catch(function() {
       self.setData({ syncing: false });
     });
+  },
+
+  // ============ 定投计划弹窗 ============
+
+  showPlan: function(e) {
+    var idx = e.currentTarget.dataset.index;
+    var fund = this.data.displayFunds[idx];
+    if (!fund) return;
+    var nav = parseFloat(fund.nav) || 0;
+    var plans = app.getFundPlans(fund.code);
+    // 格式化展示
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      if (p.lastExecuted) {
+        p._lastLabel = '上次执行: ' + p.lastExecuted;
+      } else {
+        p._lastLabel = '尚未执行';
+      }
+    }
+    this.setData({
+      showPlanModal: true,
+      planFundCode: fund.code,
+      planFundName: fund.name,
+      planFundNav: nav,
+      fundPlans: plans,
+      planEditId: '',
+      planAmount: '',
+      planPeriod: 'weekly',
+      planDayOfWeek: 1,
+      planDayOfMonth: 1
+    });
+  },
+
+  hidePlan: function() { this.setData({ showPlanModal: false }); },
+
+  _getPeriodLabel: function(plan) {
+    var weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    switch (plan.period) {
+      case 'daily': return '每日';
+      case 'weekly': return '每周 ' + weekNames[plan.dayOfWeek];
+      case 'biweekly': return '每两周 ' + weekNames[plan.dayOfWeek];
+      case 'monthly': return '每月 ' + plan.dayOfMonth + ' 日';
+    }
+    return '';
+  },
+
+  onPlanAmount: function(e) { this.setData({ planAmount: e.detail.value }); },
+  onPlanPeriod: function(e) {
+    var id = e.currentTarget.dataset.id;
+    this.setData({ planPeriod: id });
+  },
+  onPlanDayOfWeek: function(e) {
+    var day = parseInt(e.currentTarget.dataset.id);
+    this.setData({ planDayOfWeek: day });
+  },
+  onPlanDayOfMonth: function(e) {
+    var day = parseInt(e.currentTarget.dataset.id);
+    this.setData({ planDayOfMonth: day });
+  },
+
+  addPlan: function() {
+    var amount = parseFloat(this.data.planAmount) || 0;
+    var period = this.data.planPeriod;
+    var code = this.data.planFundCode;
+
+    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
+
+    var now = new Date();
+    var createdAt = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
+
+    var plan = {
+      id: 'p_' + Date.now(),
+      fundCode: code,
+      fundName: this.data.planFundName,
+      amount: amount,
+      period: period,
+      dayOfWeek: this.data.planDayOfWeek,
+      dayOfMonth: this.data.planDayOfMonth,
+      createdAt: createdAt,
+      lastExecuted: null,
+      active: true
+    };
+
+    app.addPlan(plan);
+    // 刷新计划列表
+    var plans = app.getFundPlans(code);
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({
+      fundPlans: plans,
+      planAmount: ''
+    });
+    wx.showToast({ title: '定投计划已创建', icon: 'success', duration: 1000 });
+  },
+
+  editPlan: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var plans = this.data.fundPlans;
+    var plan = null;
+    for (var i = 0; i < plans.length; i++) {
+      if (plans[i].id === id) { plan = plans[i]; break; }
+    }
+    if (!plan) return;
+    this.setData({
+      planEditId: id,
+      planAmount: String(plan.amount),
+      planPeriod: plan.period,
+      planDayOfWeek: plan.dayOfWeek,
+      planDayOfMonth: plan.dayOfMonth
+    });
+  },
+
+  cancelEdit: function() {
+    this.setData({
+      planEditId: '',
+      planAmount: '',
+      planPeriod: 'weekly',
+      planDayOfWeek: 1,
+      planDayOfMonth: 1
+    });
+  },
+
+  updatePlan: function() {
+    var amount = parseFloat(this.data.planAmount) || 0;
+    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
+    app.updatePlan(this.data.planEditId, {
+      amount: amount,
+      period: this.data.planPeriod,
+      dayOfWeek: this.data.planDayOfWeek,
+      dayOfMonth: this.data.planDayOfMonth
+    });
+    var plans = app.getFundPlans(this.data.planFundCode);
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({
+      fundPlans: plans,
+      planEditId: '',
+      planAmount: ''
+    });
+    wx.showToast({ title: '计划已更新', icon: 'success', duration: 1000 });
+  },
+
+  deletePlan: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var self = this;
+    wx.showModal({
+      title: '删除定投计划',
+      content: '确定要删除该定投计划吗？',
+      success: function(res) {
+        if (res.confirm) {
+          app.deletePlan(id);
+          var plans = app.getFundPlans(self.data.planFundCode);
+          for (var i = 0; i < plans.length; i++) {
+            var p = plans[i];
+            p._periodLabel = self._getPeriodLabel(p);
+            p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+          }
+          self.setData({ fundPlans: plans });
+          wx.showToast({ title: '已删除', icon: 'none', duration: 1000 });
+        }
+      }
+    });
+  },
+
+  togglePlanActive: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var plans = this.data.fundPlans;
+    var active = true;
+    for (var i = 0; i < plans.length; i++) {
+      if (plans[i].id === id) {
+        active = !plans[i].active;
+        break;
+      }
+    }
+    app.updatePlan(id, { active: active });
+    var updated = app.getFundPlans(this.data.planFundCode);
+    for (var j = 0; j < updated.length; j++) {
+      var p = updated[j];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({ fundPlans: updated });
+  },
+
+  executePlanNow: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var all = app.loadPlans();
+    var plan = null;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id === id) { plan = all[i]; break; }
+    }
+    if (!plan) return;
+    // 临时覆盖：强制今天执行
+    plan._forceExec = true;
+    var executed = app._executePlan(plan);
+    if (executed) {
+      this.applyFilter();
+      this.updatePortfolio();
+    }
+    var plans = app.getFundPlans(this.data.planFundCode);
+    for (var j = 0; j < plans.length; j++) {
+      var p = plans[j];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({ fundPlans: plans });
+    wx.showToast({ title: executed ? '已执行定投' : '今日已执行过', icon: executed ? 'success' : 'none', duration: 1000 });
   },
 });

@@ -133,3 +133,106 @@ page {
   padding: 0 32rpx 48rpx;
   overflow-x: hidden;
 }
+
+/* ========== 交易记录按钮 ========== */
+.d-trade-btn {
+  margin-top: 20rpx;
+  padding: 14rpx 32rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(212,168,83,0.12);
+  border: 1px solid rgba(212,168,83,0.3);
+  border-radius: 16rpx;
+  text-align: center;
+  width: fit-content;
+}
+
+/* ========== 交易记录弹窗 ========== */
+.trade-mask {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 100;
+}
+.trade-panel {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  max-height: 65vh;
+  background: var(--bg-card);
+  border-radius: 32rpx 32rpx 0 0;
+  z-index: 101;
+  transform: translateY(100%);
+  transition: transform 0.25s ease-out;
+  overflow: hidden;
+}
+.trade-panel-show { transform: translateY(0); }
+
+/* 头部 */
+.tp-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 32rpx 36rpx 24rpx;
+  border-bottom: 1px solid var(--border);
+}
+.tp-title { font-size: 32rpx; font-weight: 700; }
+.tp-close {
+  width: 48rpx; height: 48rpx; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 28rpx; color: var(--text-dim);
+  border-radius: 50%; background: var(--bg-input);
+}
+
+/* 列表 */
+.tp-list { max-height: 55vh; padding: 16rpx 36rpx 48rpx; width: 100%; box-sizing: border-box; }
+
+.tp-section-title {
+  font-size: 24rpx; font-weight: 600; color: var(--text-secondary);
+  margin: 28rpx 0 12rpx; padding-top: 20rpx;
+  border-top: 1px solid var(--border);
+}
+
+/* 记录条目 */
+.tp-item { box-sizing: border-box;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24rpx 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+  gap: 16rpx;
+}
+.tp-item-left { flex: 1; min-width: 0; overflow: hidden; }
+.tp-item-date { font-size: 20rpx; color: var(--text-dim); margin-bottom: 4rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-item-type { font-size: 26rpx; font-weight: 600; margin-bottom: 4rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-item-type.t-buy { color: var(--red); }
+.tp-item-type.t-sell { color: var(--green); }
+.tp-item-type.t-plan { color: var(--accent); }
+.tp-auto-tag { flex-shrink: 0; display: inline-block; vertical-align: middle;
+  font-size: 20rpx; font-weight: 500; color: var(--accent);
+  margin-left: 10rpx; padding: 2rpx 10rpx;
+  background: rgba(212,168,83,0.15); border-radius: 8rpx;
+}
+.tp-item-detail { font-size: 22rpx; color: var(--text-secondary); margin-bottom: 2rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-item-nav { font-size: 20rpx; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 删除按钮 */
+.tp-del-btn { flex-shrink: 0;
+  padding: 10rpx 24rpx;
+  font-size: 22rpx; color: var(--red);
+  border: 1px solid rgba(255,99,99,0.4);
+  border-radius: 12rpx; background: rgba(255,99,99,0.08);
+}
+
+/* 定投计划状态 */
+.tp-plan-status { flex-shrink: 0;
+  padding: 8rpx 20rpx;
+  font-size: 22rpx; font-weight: 600; border-radius: 12rpx;
+}
+.tp-plan-status.tp-active { color: var(--accent); background: rgba(212,168,83,0.12); }
+.tp-plan-status.tp-paused { color: var(--text-dim); background: var(--bg-input); }
+
+/* 空状态 */
+.tp-empty {
+  text-align: center; padding: 80rpx 0;
+  font-size: 26rpx; color: var(--text-dim);
+}
+
+/* 当日信号卡片 */
+.rec-daily {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  margin-top: 0;
+}
