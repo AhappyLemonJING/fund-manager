@@ -86,5 +86,5 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 }
 .bb-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4rpx; padding: 6rpx 0; }
 .bb-icon { font-size: 36rpx; }
-.bb-label { font-size: 20rpx; color: var(--text-dim); font-weight: 500; }
+.bb-label { font-size: 30rpx; color: var(--text-dim); font-weight: 500; }
 .bb-active .bb-label { color: var(--accent); font-weight: 700; }
