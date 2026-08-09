@@ -619,6 +619,7 @@ Page({
       success: function(res) {
         if (res.confirm) {
           app.deleteTrade(code, idx);
+          app.pushToCloud();
           self.openTradeRecords();
           wx.showToast({ title: '已删除', icon: 'success' });
         }

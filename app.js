@@ -114,15 +114,28 @@ App({
     this._markSynced();
   },
 
-  syncData: function() {
+  _doSync: function(data, silent) {
     var self = this;
-    var data = self.prepareSyncData();
-    return wx.cloud.callFunction({ name: 'sync', data: { data: data } }).then(function(res) {
+    var p = wx.cloud.callFunction({ name: 'sync', data: { data: data } }).then(function(res) {
       if (res.result && res.result.success) { self.applySyncData(res.result.data); return { ok: true, time: new Date() }; }
       var errs = (res.result && res.result.errors) || [];
       return { ok: false, error: errs.length > 0 ? errs.join('; ') : '同步返回异常' };
-    }).catch(function(err) { return { ok: false, error: err.message || 'u7f51u7edcu9519u8bef' }; });
+    }).catch(function(err) { return { ok: false, error: err.message || '网络错误' }; });
+    return silent ? p.catch(function(){}) : p;
   },
+
+  syncData: function() {
+    var self = this;
+    var data = self.prepareSyncData();
+    return self._doSync(data);
+  },
+
+  // 数据变更后静默推送云端
+  pushToCloud: function() {
+    var data = this.prepareSyncData();
+    return this._doSync(data, true);
+  },
+
 
   // ============ 基金代码存储 ============
 
