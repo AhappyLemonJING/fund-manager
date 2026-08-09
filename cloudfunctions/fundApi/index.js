@@ -2,12 +2,14 @@ const https = require('https');
 
 exports.main = async (event) => {
   const { type, code } = event;
-  if (!type || !code) return { error: 'Missing type or code' };
+  if (!type) return { error: 'Missing type' };
+  var noCodeTypes = ['indices', 'sectors', 'rank'];
+  if (!code && noCodeTypes.indexOf(type) < 0) return { error: 'Missing code' };
 
   let url, opts = {};
 
   if (type === 'search') {
-    url = 'https://searchapi.eastmoney.com/api/suggest/get?input=' + encodeURIComponent(code) + '&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=5';
+    url = 'https://searchapi.eastmoney.com/api/suggest/get?input=' + encodeURIComponent(code) + '&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=' + (event.count || 20);
   } else if (type === 'nav') {
     url = 'https://api.fund.eastmoney.com/f10/lsjz?fundCode=' + encodeURIComponent(code) + '&pageIndex=1&pageSize=1';
   } else if (type === 'history') {
@@ -30,43 +32,107 @@ exports.main = async (event) => {
       url = 'https://np-anotice-stock.eastmoney.com/api/security/ann?page_size=10&page_index=1&ann_type=' + ex + '&stock_list=' + cn;
     }
     opts.timeout = 8000;
+        } else if (type === 'indices') {
+    // Sina hq.sinajs.cn API，响应为 GBK 编码，需用 TextDecoder 解码
+    return new Promise(function(resolve) {
+      var snUrl = 'https://hq.sinajs.cn/list=sh000001,sz399001,sz399006,sh000688';
+      var sp = new URL(snUrl);
+      https.request({
+        hostname: sp.hostname, path: sp.pathname + sp.search, method: 'GET', timeout: 8000,
+        headers: { 'Referer': 'https://finance.sina.com.cn/' }
+      }, function(incoming) {
+        var chunks = [];
+        incoming.on('data', function(c) { chunks.push(c); });
+        incoming.on('end', function() {
+          var buf = Buffer.concat(chunks);
+          var body;
+          try { body = new TextDecoder('gbk').decode(buf); }
+          catch(e) { body = buf.toString(); }
+          var lines = body.split('\n').filter(Boolean);
+          var indices = [];
+          lines.forEach(function(line) {
+            var m = line.match(/"([^"]*)"/);
+            if (!m) return;
+            var parts = m[1].split(',');
+            if (parts.length < 4) return;
+            var name = parts[0];
+            var prevClose = parseFloat(parts[2]) || 0;
+            var price = parseFloat(parts[3]) || 0;
+            var change = price - prevClose;
+            var changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+            var codeMatch = line.match(/hq_str_(?:sh|sz)(\d+)/);
+            var code = codeMatch ? codeMatch[1] : '';
+            indices.push({ code: code, name: name, price: price, changePct: parseFloat(changePct.toFixed(2)), change: parseFloat(change.toFixed(2)) });
+          });
+          console.log('sina indices:', indices.length);
+          resolve({ indices: indices });
+        });
+      }).on('error', function(e) { resolve({ indices: [] }); }).end();
+    });
+  } else if (type === 'sectors') {
+    return fetchJSON('https://push2delay.eastmoney.com/api/qt/clist/get?fid=f3&po=1&pz=20&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:2&fields=f2,f3,f4,f12,f14').then(function(data) {
+      var list = (data && data.data && data.data.diff) || [];
+      return { sectors: list.map(function(item) {
+        return { code: item.f12, name: item.f14, changePct: item.f3, change: item.f4, price: item.f2 };
+      }) };
+    });
+  } else if (type === 'rank') {
+    var ft = event.ft || 'all';
+    var sc = event.sc || '1nzf';
+    var st = event.st || 'desc';
+    var pi = event.pi || 1;
+    var pn = event.pn || 30;
+    url = 'https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf&ft=' + ft +
+      '&rs=&gs=0&sc=' + sc + '&st=' + st +
+      '&sd=' + (event.sd || '') + '&ed=' + (event.ed || '') +
+      '&qdii=&tabSubtype=,,,,,&pi=' + pi + '&pn=' + pn + '&dx=1&v=' + Date.now();
   } else {
     return { error: 'Unknown type: ' + type };
   }
 
+  return fetchURL(url, opts).then(function(body) {
+    if (type === 'history' || type === 'benchmark') {
+      try { var d1 = JSON.parse(body); return { list: (d1.Data && d1.Data.LSJZList) || [], total: d1.TotalCount || 0 }; }
+      catch(e) { return { error: e.message, list: [] }; }
+    }
+    try {
+      if (type === 'rank') return parseRank(body);
+      if (type === 'holdings') return parseHoldings(body);
+      if (type === 'stocknews') {
+        var d3 = JSON.parse(body);
+        return opts.isWscnFallback ? parseWscnNews(d3, opts.stockName) : parseStockNews(d3);
+      }
+      return JSON.parse(body);
+    } catch(e) { return { error: e.message }; }
+  });
+};
+
+function fetchURL(url, opts) {
+  opts = opts || {};
   return new Promise(function(resolve) {
     var p = new URL(url);
     var req = https.request({
       hostname: p.hostname, path: p.pathname + p.search, method: 'GET',
       timeout: opts.timeout || 10000,
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://fund.eastmoney.com/', 'Accept': 'application/json' }
-    }, function(res) {
+    }, function(incoming) {
       var body = '';
-      res.setEncoding('utf8');
-      res.on('data', function(c) { body += c; });
-      res.on('end', function() {
-        // history / benchmark 共用 lsjz 接口
-        if (type === 'history' || type === 'benchmark') {
-          try { var d1 = JSON.parse(body); return resolve({ list: (d1.Data && d1.Data.LSJZList) || [], total: d1.TotalCount || 0 }); }
-          catch(e) { resolve({ error: e.message, list: [] }); }
-          return;
-        }
-        // 其他类型
-        try {
-          if (type === 'holdings') return resolve(parseHoldings(body));
-          if (type === 'stocknews') {
-            var d3 = JSON.parse(body);
-            return resolve(opts.isWscnFallback ? parseWscnNews(d3, opts.stockName) : parseStockNews(d3));
-          }
-          resolve(JSON.parse(body));
-        } catch(e) { resolve({ error: e.message }); }
-      });
+      incoming.setEncoding('utf8');
+      incoming.on('data', function(c) { body += c; });
+      incoming.on('end', function() { resolve(body); });
     });
     req.setTimeout(opts.timeout || 10000, function() { req.destroy(); resolve({ error: 'timeout' }); });
     req.on('error', function(e) { resolve({ error: e.message }); });
     req.end();
   });
-};
+}
+
+function fetchJSON(url) {
+  return fetchURL(url).then(function(body) {
+    if (typeof body === 'object') { console.error('fetchJSON non-string:', JSON.stringify(body)); return body; }
+    try { return JSON.parse(body); } catch(e) { console.error('fetchJSON parse error:', e.message); return { error: e.message }; }
+  });
+}
 
 function parseHoldings(body) {
   var cS = body.indexOf('content:"'), cE = body.indexOf('",arryear');
@@ -82,7 +148,10 @@ function parseHoldings(body) {
     if (tb >= 0) { var te = body.indexOf('</tbody>', tb); if (te > tb) content = body.substring(tb, te + 8); }
     if (content) source = 'tbody-fallback';
   }
-  if (!content) return { error: 'no content', sectors: [], stocks: [], _dump: body.substring(0, 300) };
+  if (!content) {
+    var cy = (body.match(/curyear["\s:=]+(\d{4})/) || [''])[1];
+    return { sectors: [], stocks: [], date: cy || '' };
+  }
 
   var yr = (body.match(/curyear["\s:=]+(\d{4})/) || body.match(/year["\s:=]+(\d{4})/) || [''])[1] || '';
 
@@ -151,4 +220,28 @@ function parseWscnNews(data, stockName) {
     news.push({ title: t.length>100?t.substring(0,100)+'...':t, column:'市场快讯', time:ds, date:ds.substring(0,10), source:'wscn' });
   });
   return { news: news, total: items.length, source: 'wscn' };
+}
+
+function parseRank(body) {
+  if (!body) return { error: 'empty body' };
+  try {
+    var start = body.indexOf('{');
+    var end = body.lastIndexOf('}');
+    if (start < 0 || end < start) return { error: 'parse fail' };
+    var jsonStr = body.substring(start, end + 1);
+    // rankhandler returns JS object literal with unquoted keys
+    // e.g. {datas:[...],allPages:5} -> valid JSON
+    jsonStr = jsonStr.replace(/([{,]\s*)([a-zA-Z_]\w*)(\s*:)/g, '$1"$2"$3');
+    var data = JSON.parse(jsonStr);
+    if (data.ErrCode && data.ErrCode !== 0) {
+      return { error: data.Data || ('rank err ' + data.ErrCode) };
+    }
+    return {
+      datas: data.datas || [],
+      allPages: data.allPages || 1,
+      allNum: data.allNum || 0
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
 }

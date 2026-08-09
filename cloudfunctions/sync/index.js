@@ -22,7 +22,10 @@ exports.main = async function(event, context) {
       console.log('created: ' + CATEGORIES[c].col);
     } catch (e) {
       // -502005 表示已存在，其他错误记录
-      if (e.errCode && e.errCode !== -502005) {
+      var isExistErr = (e.errCode === -502005)
+        || (e.errCode === 'ResourceUnavailable.ResourceExist')
+        || ((e.errMsg || '').toLowerCase().indexOf('exist') >= 0);
+      if (!isExistErr) {
         errors.push('createCollection ' + CATEGORIES[c].col + ': ' + e.message);
       }
     }
@@ -102,16 +105,15 @@ function doMerge(db, colName, openid, keyFields, localList, errors) {
       delete cloudMap[key];
     }
 
-    var remKeys = Object.keys(cloudMap);
-    for (var r = 0; r < remKeys.length; r++) {
-      var rem = cloudMap[remKeys[r]];
-      var clean = {};
-      var rk = Object.keys(rem);
-      for (var ri = 0; ri < rk.length; ri++) {
-        if (rk[ri] !== '_id' && rk[ri] !== '_openid') clean[rk[ri]] = rem[rk[ri]];
-      }
-      result.push(clean);
-    }
+   var remKeys = Object.keys(cloudMap);
+   for (var r = 0; r < remKeys.length; r++) {
+     var rem = cloudMap[remKeys[r]];
+     writePromises.push(
+       collection.doc(rem._id).remove().catch(function(e) {
+         errors.push(colName + ' remove fail: ' + e.message);
+       })
+     );
+   }
 
     return Promise.all(writePromises).then(function() { return result; });
   });

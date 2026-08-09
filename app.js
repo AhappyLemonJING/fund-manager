@@ -487,6 +487,26 @@ App({
       });
   },
 
+  // ============ 市场行情（通过云函数代理） ============
+
+  fetchIndices: function() {
+    return wx.cloud.callFunction({
+      name: 'fundApi',
+      data: { type: 'indices' }
+    }).then(function(res) {
+      return (res.result && res.result.indices) || [];
+    });
+  },
+
+  fetchSectors: function() {
+    return wx.cloud.callFunction({
+      name: 'fundApi',
+      data: { type: 'sectors' }
+    }).then(function(res) {
+      return (res.result && res.result.sectors) || [];
+    });
+  },
+
   // ============ 持仓 & 新闻 & 分析 ============
 
   fetchHoldings: function(code) {

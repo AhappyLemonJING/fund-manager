@@ -1,0 +1,152 @@
+<navigation-bar title="基金发现" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
+
+<view class="search-bar">
+  <view class="search-box">
+    <text class="search-icon">🔍</text>
+    <input class="search-input"
+      placeholder="搜索基金名称或代码"
+      placeholder-style="color:#6e7681"
+      value="{{searchValue}}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+      maxlength="30"/>
+    <text wx:if="{{searchValue}}" class="search-clear" bindtap="clearSearch">✕</text>
+  </view>
+</view>
+
+<view wx:if="{{showSearch}}" class="search-results-panel">
+  <view wx:if="{{searching}}" class="state-box">
+    <text class="state-text">搜索中...</text>
+  </view>
+  <view wx:elif="{{searchResults.length === 0}}" class="state-box">
+    <text class="state-text">未找到相关基金</text>
+  </view>
+  <view wx:else class="search-result-list">
+    <view wx:for="{{searchResults}}" wx:key="code" class="sr-item">
+      <view class="sr-info" bindtap="goSearchDetail" data-code="{{item.code}}">
+        <text class="sr-code">{{item.code}}</text>
+        <text class="sr-name">{{item.name}}</text>
+        <text class="sr-type">{{item.type}}</text>
+      </view>
+      <view wx:if="{{!item._added}}" class="sr-add" catchtap="addFund" data-code="{{item.code}}" data-name="{{item.name}}">
+        + 添加
+      </view>
+      <view wx:else class="sr-added">已添加</view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{!showSearch}}">
+<scroll-view class="filter-tab-bar" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+  <view wx:for="{{tabs}}" wx:key="id"
+    class="filter-tab {{activeTab === item.id ? 'filter-tab-active' : ''}}"
+    bindtap="switchTab" data-id="{{item.id}}">
+    {{item.name}}
+  </view>
+</scroll-view>
+
+<view class="toolbar">
+  <view class="sort-trigger" bindtap="toggleSortPicker">
+    <text class="sort-label">{{sortOptions[0].label}}</text>
+    <text wx:for="{{sortOptions}}" wx:key="id" wx:if="{{item.id === activeSort}}">{{item.label}}</text>
+    <text class="sort-arrow">{{showSortPicker ? '▴' : '▾'}}</text>
+  </view>
+</view>
+
+<view wx:if="{{showSortPicker}}" class="sort-dropdown">
+  <view wx:for="{{sortOptions}}" wx:key="id"
+    class="sort-option {{activeSort === item.id ? 'sort-option-active' : ''}}"
+    bindtap="selectSort" data-id="{{item.id}}">
+    {{item.label}}
+    <text wx:if="{{activeSort === item.id}}" class="sort-check">✓</text>
+  </view>
+</view>
+
+<scroll-view class="scrollarea" scroll-y
+  refresher-enabled refresher-triggered="{{refreshing}}"
+  bindrefresherrefresh="onRefresh" refresher-threshold="80"
+  bindscrolltolower="loadMore" lower-threshold="200">
+
+  <view wx:if="{{loading}}" class="state-box">
+    <text class="state-text">加载中...</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="state-box">
+    <text class="state-icon">📡</text>
+    <text class="state-text">数据加载失败</text>
+    <text class="state-sub">{{errorMsg}}</text>
+    <view class="retry-btn" bindtap="onRefresh">重新加载</view>
+  </view>
+
+  <view wx:else>
+    <view wx:for="{{funds}}" wx:key="code" class="card" bindtap="goDetail" data-index="{{index}}">
+      <view class="card-row">
+        <view class="card-left">
+          <text class="card-code">{{item.code}}</text>
+          <text class="card-name">{{item.name}}</text>
+        </view>
+        <view class="card-right">
+          <text class="card-nav">{{item.nav}}</text>
+          <text class="card-daily {{item.dailyPct >= 0 ? 'red' : 'green'}}">{{item.dailyPctStr}}%</text>
+        </view>
+      </view>
+
+      <view class="card-perf">
+        <view class="perf-item">
+          <text class="perf-label">近1月</text>
+          <text class="perf-val {{item.m1Up ? 'red' : 'green'}}">{{item.m1Str}}</text>
+        </view>
+        <view class="perf-item">
+          <text class="perf-label">近3月</text>
+          <text class="perf-val {{item.m3Up ? 'red' : 'green'}}">{{item.m3Str}}</text>
+        </view>
+        <view class="perf-item">
+          <text class="perf-label">近6月</text>
+          <text class="perf-val {{item.m6Up ? 'red' : 'green'}}">{{item.m6Str}}</text>
+        </view>
+        <view class="perf-item">
+          <text class="perf-label">近1年</text>
+          <text class="perf-val {{item.y1Up ? 'red' : 'green'}}">{{item.y1Str}}</text>
+        </view>
+        <view class="perf-item" wx:if="{{item.fundSizeStr}}">
+          <text class="perf-label">规模</text>
+          <text class="perf-val perf-size">{{item.fundSizeStr}}</text>
+        </view>
+      </view>
+
+      <view class="card-actions">
+        <view wx:if="{{!item._added}}" class="ca-btn ca-add" catchtap="addFund" data-code="{{item.code}}" data-name="{{item.name}}">
+          <text>+ 加入自选</text>
+        </view>
+        <view wx:else class="ca-btn ca-added">
+          <text>✓ 已添加</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{loadingMore}}" class="load-more">
+      <text>加载中...</text>
+    </view>
+    <view wx:elif="{{!hasMore && funds.length > 0}}" class="load-more">
+      <text style="color:var(--text-dim);">已显示全部</text>
+    </view>
+
+    <view style="height:120rpx;"></view>
+  </view>
+</scroll-view>
+
+</view>
+<view class="bottom-bar">
+  <view class="bb-item" bindtap="goFund">
+    <text class="bb-icon">📊</text>
+    <text class="bb-label">基金</text>
+  </view>
+  <view class="bb-item" bindtap="goMarket">
+    <text class="bb-icon">📈</text>
+    <text class="bb-label">行情</text>
+  </view>
+  <view class="bb-item bb-active" bindtap="noop">
+    <text class="bb-icon">🔍</text>
+    <text class="bb-label">发现</text>
+  </view>
+</view>

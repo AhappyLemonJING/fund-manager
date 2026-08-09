@@ -1,0 +1,90 @@
+page { background: var(--bg); width: 100%; overflow-x: hidden; }
+
+/* 更新栏 */
+.update-bar { text-align: right; padding: 8rpx 32rpx 20rpx; }
+.update-text { font-size: 20rpx; color: var(--text-dim); }
+
+/* 状态框 */
+.state-box { text-align: center; padding: 240rpx 0; }
+.state-icon { font-size: 80rpx; opacity: 0.3; display: block; }
+.state-text { margin-top: 20rpx; color: var(--text-secondary); font-size: 28rpx; }
+.state-sub { display: block; margin-top: 8rpx; font-size: 22rpx; color: var(--text-dim); }
+.retry-btn {
+  display: inline-block; margin-top: 36rpx; padding: 18rpx 56rpx;
+  background: var(--accent); color: #000; border-radius: 40rpx;
+  font-weight: 600; font-size: 28rpx;
+}
+
+/* ====== 大盘概览 ====== */
+.overview {
+  margin: 0 24rpx 20rpx; padding: 6rpx 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 20rpx; overflow: hidden;
+}
+.ov-item {
+  display: flex; align-items: center; gap: 16rpx;
+  padding: 22rpx 28rpx;
+  border-bottom: 1px solid var(--border);
+}
+.ov-item:last-child { border-bottom: none; }
+.ov-name {
+  font-size: 26rpx; font-weight: 600; width: 100rpx; flex-shrink: 0;
+}
+.ov-price { font-size: 30rpx; font-weight: 700; flex: 1; }
+.ov-change {
+  padding: 6rpx 18rpx; border-radius: 12rpx; font-size: 24rpx;
+  font-weight: 700; min-width: 120rpx; text-align: center;
+}
+.ov-change.red { background: var(--red-bg); color: var(--red); }
+.ov-change.green { background: var(--green-bg); color: var(--green); }
+
+/* ====== 涨跌统计条 ====== */
+.breadth-bar {
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 24rpx 24rpx; padding: 18rpx 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16rpx; gap: 0;
+}
+.br-item { display: flex; align-items: center; gap: 10rpx; }
+.br-label { font-size: 22rpx; color: var(--text-dim); }
+.br-num { font-size: 32rpx; font-weight: 700; }
+.br-divider {
+  width: 1px; height: 32rpx; margin: 0 40rpx;
+  background: var(--border);
+}
+
+/* ====== 行业板块列表 ====== */
+.sector-list {
+  margin: 0 24rpx; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 16rpx;
+  overflow: hidden;
+}
+.sl-row {
+  display: flex; align-items: center; gap: 16rpx;
+  padding: 22rpx 24rpx;
+  border-bottom: 1px solid var(--border);
+}
+.sl-row:last-child { border-bottom: none; }
+.sl-left { flex: 1; min-width: 0; }
+.sl-name { font-size: 26rpx; font-weight: 600; display: block; margin-bottom: 10rpx; }
+.sl-bar-bg {
+  height: 6rpx; border-radius: 3rpx;
+  background: var(--bg-input); overflow: hidden;
+  width: 100%;
+}
+.sl-bar { height: 100%; border-radius: 3rpx; min-width: 4rpx; }
+.bg-red { background: var(--red); }
+.bg-green { background: var(--green); }
+.sl-pct { font-size: 28rpx; font-weight: 700; min-width: 110rpx; text-align: right; }
+
+/* ====== 底部导航 ====== */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  display: flex; align-items: center;
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  padding: 12rpx 0; padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+}
+.bb-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4rpx; padding: 6rpx 0; }
+.bb-icon { font-size: 36rpx; }
+.bb-label { font-size: 20rpx; color: var(--text-dim); font-weight: 500; }
+.bb-active .bb-label { color: var(--accent); font-weight: 700; }

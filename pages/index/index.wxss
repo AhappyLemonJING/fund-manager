@@ -81,7 +81,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   transition: all 0.2s;
 }
 .card:active { opacity: 0.85; transform: scale(0.985); }
-.card-top { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; overflow: hidden; }
+.card-top { display: flex; justify-content: flex-start; align-items: center; gap: 20rpx; overflow: hidden; }
 .card-info { flex: 1; min-width: 0; overflow: hidden; }
 .card-code-name { display: flex; align-items: baseline; gap: 12rpx; overflow: hidden; }
 .card-code { color: var(--text-dim); font-size: 22rpx; letter-spacing: 2rpx; flex-shrink: 0; }
@@ -94,9 +94,9 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 /* 持仓盈亏行 */
 .card-pl { padding: 12rpx 0 6rpx; }
-.pl-row { display: flex; justify-content: space-between; align-items: center; }
-.pl-cost { font-size: 22rpx; color: var(--text-dim); }
-.pl-profit { font-size: 26rpx; font-weight: 700; }
+.pl-row { display: flex; justify-content: flex-start; align-items: center; }
+.pl-cost { font-size: 22rpx; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.pl-profit { font-size: 26rpx; font-weight: 700; margin-left: auto; flex-shrink: 0; }
 
 /* bottom row */
 .card-bottom {
@@ -137,14 +137,14 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   background: var(--bg-input); border-radius: 14rpx;
   padding: 20rpx 24rpx; margin-bottom: 20rpx;
 }
-.tps-row { display: flex; justify-content: space-between; padding: 6rpx 0; }
+.tps-row { display: flex; justify-content: flex-start; padding: 6rpx 0; }
 .tps-label { font-size: 24rpx; color: var(--text-dim); }
 .tps-val { font-size: 24rpx; font-weight: 600; margin-right: 0; }
 .tps-profit .tps-val { font-size: 28rpx; }
 .sec-title-sm { font-size: 22rpx; color: var(--text-dim); margin-bottom: 12rpx; letter-spacing: 2rpx; }
 .trade-hist { margin-bottom: 24rpx; }
 .tr-item {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: flex-start; align-items: center;
   padding: 12rpx 16rpx; background: var(--bg-input);
   border-radius: 12rpx; margin-bottom: 8rpx;
 }
@@ -237,7 +237,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 /* ========== 分组管理 ========== */
 .gm-row {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: flex-start; align-items: center;
   padding: 20rpx 0; border-bottom: 1px solid var(--border); gap: 16rpx;
 }
 .gm-name { font-size: 28rpx; flex: 1; }
@@ -252,26 +252,27 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 /* ========== 云同步 ========== */
 .sync-bar {
-  display: flex; align-items: center; justify-content: flex-end;
+  display: flex; align-items: center; justify-content: flex-start;
   padding: 8rpx 32rpx 0; gap: 12rpx;
 }
 .sync-status {
   font-size: 20rpx; color: var(--text-dim);
 }
-.sync-btn {
-  width: 52rpx; height: 52rpx; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg-input); border: 1px solid var(--border);
-  font-size: 26rpx; color: var(--text-secondary);
-  transition: all 0.2s;
-}
-.sync-btn:active { background: rgba(212,168,83,0.15); border-color: var(--accent); }
-.sync-btn.syncing {
-  animation: sync-spin 1s linear infinite;
-  color: var(--accent);
-  border-color: var(--accent);
-}
-@keyframes sync-spin {
-  from { transform: rotate(0deg); }
+
   to { transform: rotate(360deg); }
+
+
+/* ========== 底部导航 ========== */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  display: flex; align-items: center;
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  padding: 12rpx 0; padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
 }
+.bb-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4rpx; padding: 6rpx 0;
+}
+.bb-icon { font-size: 36rpx; }
+.bb-label { font-size: 30rpx; color: var(--text-dim); font-weight: 500; }
+.bb-active .bb-label { color: var(--accent); font-weight: 700; }

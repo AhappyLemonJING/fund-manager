@@ -1,6 +1,8 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/discover/discover",
+    "pages/market/market",
     "pages/detail/detail"
   ],
   "window": {

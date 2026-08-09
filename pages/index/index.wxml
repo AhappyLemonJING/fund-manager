@@ -2,21 +2,6 @@
 <!-- 云同步状态栏 -->
 <view class="sync-bar">
   <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步')}}</text>
-  <view class="sync-btn {{syncing ? 'syncing' : ''}}" bindtap="doSync">
-    <text>{{syncing ? '⟳' : '☁️'}}</text>
-  </view>
-</view>
-
-<!-- 首次同步确认弹窗 -->
-<view wx:if="{{showSyncConfirm}}" class="modal-mask" bindtap="hideSyncConfirm">
-  <view class="modal modal-confirm" catch:tap="noop">
-    <view class="modal-title">首次云同步</view>
-    <view class="confirm-text">检测到云端可能已有数据。<text style="display:block;font-size:24rpx;color:var(--text-dim);margin-top:12rpx;">将合并本地与云端数据（保留最新版本）</text></view>
-    <view class="modal-btns">
-      <view class="btn btn-cancel" bindtap="hideSyncConfirm">取消</view>
-      <view class="btn btn-ok" bindtap="confirmSync">开始同步</view>
-    </view>
-  </view>
 </view>
 
 <!-- 持仓概况 (仅持仓tab显示) -->
@@ -51,6 +36,7 @@
   <view class="main-tab {{activeTab === 'watch' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="watch">
     自选
   </view>
+
 </view>
 
 <!-- 分组 Tab 栏 -->
@@ -100,14 +86,10 @@
             </text>
           </view>
           <view wx:elif="{{pi.code === item.code}}" class="pl-row">
-            <text class="pl-cost">成本 {{pi.pl.avgCostStr}} · {{pi.pl.sharesStr}}份</text>
+            <text class="pl-cost">成本 {{pi.pl.avgCostStr}} · {{pi.pl.sharesStr}}份{{pi.pl.holdingDays > 0 ? ' · 持有' + pi.pl.holdingDays + '天' : ''}}</text>
             <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
               {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
             </text>
-          </view>
-          <view wx:if="{{pi.code === item.code && pi.pl.holdingDays > 0 && !pi.pl.override}}" class="pl-row">
-            <text></text>
-            <text class="pl-days">持有{{pi.pl.holdingDays}}天</text>
           </view>
         </block>
       </view>
@@ -339,5 +321,21 @@
       <view class="btn btn-cancel" bindtap="hideRenameModal">取消</view>
       <view class="btn btn-ok" bindtap="confirmRenameTab">确定</view>
     </view>
+  </view>
+</view>
+
+<!-- 底部导航 -->
+<view class="bottom-bar">
+  <view class="bb-item bb-active" bindtap="noop">
+    <text class="bb-icon">📊</text>
+    <text class="bb-label">基金</text>
+  </view>
+  <view class="bb-item" bindtap="goMarket">
+    <text class="bb-icon">📈</text>
+    <text class="bb-label">行情</text>
+  </view>
+  <view class="bb-item" bindtap="goDiscover">
+    <text class="bb-icon">🔍</text>
+    <text class="bb-label">发现</text>
   </view>
 </view>

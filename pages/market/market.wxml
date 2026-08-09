@@ -1,0 +1,78 @@
+<navigation-bar title="市场行情" back="{{true}}" color="white" background="#0d1117"></navigation-bar>
+
+<scroll-view class="scrollarea" scroll-y type="list"
+  refresher-enabled refresher-triggered="{{refreshing}}"
+  bindrefresherrefresh="onRefresh" refresher-threshold="80">
+
+  <view wx:if="{{updateTime}}" class="update-bar">
+    <text class="update-text">{{updateTime}} 更新</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-box">
+    <text class="state-icon">⏳</text>
+    <text class="state-text">加载中...</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="state-box">
+    <text class="state-icon">📡</text>
+    <text class="state-text">数据加载失败</text>
+    <text class="state-sub">{{errorMsg}}</text>
+    <view class="retry-btn" bindtap="onRetry">重新加载</view>
+  </view>
+
+  <view wx:else>
+    <!-- 大盘概览卡片 -->
+    <view class="overview">
+      <view wx:for="{{indices}}" wx:key="code" class="ov-item">
+        <text class="ov-name">{{item.name.length > 4 ? item.name.substring(0,4) : item.name}}</text>
+        <text class="ov-price">{{item.price}}</text>
+        <view class="ov-change {{item.up ? 'red' : 'green'}}">
+          <text class="ov-pct">{{item.changePctStr}}%</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 板块涨跌统计 -->
+    <view wx:if="{{sectors.length > 0}}" class="breadth-bar">
+      <view class="br-item br-up">
+        <text class="br-label">涨</text>
+        <text class="br-num red">{{upCount}}</text>
+      </view>
+      <view class="br-divider"></view>
+      <view class="br-item br-down">
+        <text class="br-label">跌</text>
+        <text class="br-num green">{{downCount}}</text>
+      </view>
+    </view>
+
+    <!-- 行业板块列表 -->
+    <view class="sector-list">
+      <view wx:for="{{sectors}}" wx:key="code" class="sl-row">
+        <view class="sl-left">
+          <text class="sl-name">{{item.name}}</text>
+          <view class="sl-bar-bg">
+            <view class="sl-bar {{item.up ? 'bg-red' : 'bg-green'}}" style="width:{{(item.changePct >= 0 ? item.changePct : -item.changePct) > 10 ? 100 : (item.changePct >= 0 ? item.changePct : -item.changePct) / 10 * 100}}%;"></view>
+          </view>
+        </view>
+        <text class="sl-pct {{item.up ? 'red' : 'green'}}">{{item.changePctStr}}%</text>
+      </view>
+    </view>
+  </view>
+
+  <view style="height:120rpx;"></view>
+</scroll-view>
+
+<view class="bottom-bar">
+  <view class="bb-item" bindtap="goFund">
+    <text class="bb-icon">📊</text>
+    <text class="bb-label">基金</text>
+  </view>
+  <view class="bb-item bb-active" bindtap="noop">
+    <text class="bb-icon">📈</text>
+    <text class="bb-label">行情</text>
+  </view>
+  <view class="bb-item" bindtap="goDiscover">
+    <text class="bb-icon">🔍</text>
+    <text class="bb-label">发现</text>
+  </view>
+</view>

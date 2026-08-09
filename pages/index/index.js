@@ -91,6 +91,9 @@ Page({
 
   onShow: function() {
     this.startAutoRefresh();
+    // 仅在首次打开时完成同步，切换 tab / 切换页面不再重复同步
+    if (!app.globalData._synced) this.autoSync();
+    else this.setData({ lastSyncTime: app.globalData._lastSyncTime || '' });
     if (app.globalData.funds.length > 0) {
       this.setData({ funds: app.globalData.funds });
       this.applyFilter();
@@ -172,6 +175,14 @@ Page({
     var id = e.currentTarget.dataset.id;
     this.setData({ activeGroup: id });
     this.applyFilter();
+  },
+
+    goMarket: function() {
+    wx.navigateTo({ url: '/pages/market/market' });
+  },
+
+  goDiscover: function() {
+    wx.navigateTo({ url: '/pages/discover/discover' });
   },
 
   longPressTab: function(e) {
@@ -592,25 +603,39 @@ Page({
     this.setData({ showDeleteModal: true, deleteName: fund.name || fund.code, deleteIndex: idx });
   },
   hideDeleteModal: function() { this.setData({ showDeleteModal: false }); },
-  executeDelete: function() {
-    var idx = this.data.deleteIndex;
-    if (idx < 0) return;
-    var fund = this.data.displayFunds[idx];
-    app.setFundGroup(fund.code, null);
-    // 从 funds 中找到并删除
-    var allFunds = app.globalData.funds;
-    for (var i = 0; i < allFunds.length; i++) {
-      if (allFunds[i].code === fund.code) {
-        allFunds.splice(i, 1);
-        break;
-      }
-    }
-    app.saveCodes(allFunds.map(function(f) { return f.code; }));
-    this.setData({ funds: allFunds, showDeleteModal: false });
-    this.applyFilter();
-    this.updatePortfolio();
-    wx.showToast({ title: '已删除', icon: 'none' });
-  },
+ executeDelete: function() {
+   var idx = this.data.deleteIndex;
+   if (idx < 0) return;
+   var fund = this.data.displayFunds[idx];
+  var code = fund.code;
+  app.setFundGroup(code, null);
+  // 从 funds 中找到并删除
+   var allFunds = app.globalData.funds;
+   for (var i = 0; i < allFunds.length; i++) {
+     if (allFunds[i].code === code) {
+       allFunds.splice(i, 1);
+       break;
+     }
+   }
+   app.saveCodes(allFunds.map(function(f) { return f.code; }));
+   // 清理 fund_types
+   var types = app.loadFundTypes();
+   delete types[code];
+   app.saveFundTypes(types);
+  // 清理 fund_trades
+  var allTrades = wx.getStorageSync('fund_trades') || {};
+  if (allTrades[code]) {
+    delete allTrades[code];
+    wx.setStorageSync('fund_trades', allTrades);
+    app._touch('trades');
+  }
+   // 清理 position_overrides
+   app.setPosOverride(code, null);
+   this.setData({ funds: allFunds, showDeleteModal: false });
+   this.applyFilter();
+   this.updatePortfolio();
+   wx.showToast({ title: '已删除', icon: 'none' });
+ },
 
   // ============ 跳转详情 ============
 
@@ -695,38 +720,27 @@ Page({
 
   // ============ 云同步 ============
 
-  doSync: function() {
+  autoSync: function() {
+    if (app.globalData._synced) return;
     if (this.data.syncing) return;
-    var lastCloud = app.getLastSyncTime();
-    if (lastCloud === 0) {
-      this.setData({ showSyncConfirm: true });
-      return;
-    }
-    this._executeSync();
-  },
-
-  _executeSync: function() {
     var self = this;
-    self.setData({ syncing: true, showSyncConfirm: false });
+    self.setData({ syncing: true });
     app.syncData().then(function(result) {
+      var now = new Date();
+      var ts = now.getHours().toString().padStart(2, '0') + ':' +
+               now.getMinutes().toString().padStart(2, '0');
+      app.globalData._synced = true;
+      app.globalData._lastSyncTime = ts;
+      self.setData({ syncing: false, lastSyncTime: ts });
       if (result.ok) {
-        var t = result.time;
-        var ts = t.getHours().toString().padStart(2, '0') + ':' +
-                 t.getMinutes().toString().padStart(2, '0');
-        self.setData({ syncing: false, lastSyncTime: ts });
         app.globalData.groups = app.loadGroups();
         app.globalData.groupMap = app.loadGroupMap();
         self.buildGroupTabs();
         var codes = app.loadCodes();
         if (codes.length > 0) self.loadFunds(codes);
-        wx.showToast({ title: '一步同步完成', icon: 'success', duration: 1500 });
-      } else {
-        self.setData({ syncing: false });
-        wx.showToast({ title: result.error || '同步失败', icon: 'none', duration: 2000 });
       }
+    }).catch(function() {
+      self.setData({ syncing: false });
     });
   },
-
-  hideSyncConfirm: function() { this.setData({ showSyncConfirm: false }); },
-  confirmSync: function() { this._executeSync(); },
 });

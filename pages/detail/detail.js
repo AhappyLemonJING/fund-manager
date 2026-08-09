@@ -40,15 +40,18 @@ Page({
 
   onLoad: function(options) {
     var code = options.code;
+    var name = decodeURIComponent(options.name || '');
     var funds = app.globalData.funds;
     var idx = -1;
     for (var i = 0; i < funds.length; i++) {
       if (funds[i].code === code) { idx = i; break; }
     }
     if (idx < 0) {
-      wx.showToast({ title: '数据异常', icon: 'none' });
-      wx.navigateBack();
-      return;
+      // 从发现页进入，不在自选/持仓列表中，构造临时对象
+      var tempFund = { code: code, name: name, nav: null, changePct: 0, date: '' };
+      app.globalData.funds.push(tempFund);
+      idx = app.globalData.funds.length - 1;
+      this._tempFund = true;
     }
     this._fundIndex = idx;
     this._fundCode = code;
@@ -77,6 +80,12 @@ Page({
 
   onUnload: function() {
     this.stopAutoRefresh();
+    if (this._tempFund) {
+      var funds = app.globalData.funds;
+      for (var i = funds.length - 1; i >= 0; i--) {
+        if (funds[i].code === this._fundCode) { funds.splice(i, 1); break; }
+      }
+    }
   },
 
   // ============ 走势图 ============
