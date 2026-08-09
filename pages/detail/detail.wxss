@@ -96,6 +96,23 @@ page {
 .rec-action.green { color: var(--green); }
 .rec-action.blue { color: var(--blue); }
 .rec-reason { font-size: 26rpx; color: var(--text-secondary); line-height: 1.6; }
+/* DeepSeek AI 标识 */
+.ai-badge {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 20rpx;
+  color: #9b6dff;
+  margin-bottom: 12rpx;
+  padding: 6rpx 16rpx;
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 20rpx;
+  width: fit-content;
+}
+.ai-badge-icon {
+  font-size: 22rpx;
+}
+
 
 .news-time { font-size: 20rpx; color: var(--text-dim); }
 .news-stale { opacity: 0.5; }

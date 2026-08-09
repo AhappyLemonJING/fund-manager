@@ -87,6 +87,9 @@
     <view wx:if="{{suggest}}" class="rec {{suggestClass}}">
       <view wx:if="{{loadingAnalysis}}" class="loading-line">AI 分析中...</view>
       <block wx:else>
+        <view wx:if="{{aiPowered}}" class="ai-badge">
+          <text class="ai-badge-icon">✨</text> DeepSeek AI 分析
+        </view>
         <view class="rec-label">综合分析</view>
         <view class="rec-action {{suggestClass}}">{{suggestLabel}}</view>
         <view class="rec-reason">{{suggest.reason}}</view>

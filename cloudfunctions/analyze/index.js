@@ -1,6 +1,14 @@
-/* 云函数：AI 分析引擎
- * 入参: { stocks: [{code,name,weight}], newsMap: { code: [{title,column,time}] } }
- * 返回: { labeled: { code: [{title,type,reason}] }, suggest: {action,reason,stats} }
+/* 云函数：AI 分析引擎（DeepSeek + 规则引擎）
+ * 入参: { stocks: [{code,name,weight}], newsMap: { code: [{title,column,time}] }, fundName?: string }
+ * 返回: { labeled, suggest, stats, aiPowered }
+ *
+ * DeepSeek API 配置步骤：
+ *   1. 在 DeepSeek 开放平台 (platform.deepseek.com) 获取 API Key
+ *   2. 微信云开发控制台 -> 云函数 -> analyze -> 环境变量，添加：
+ *      DEEPSEEK_API_KEY = sk-xxxxxxxxxxxxxxxx
+ *   3. 重新上传并部署云函数即可生效
+ *
+ * 若未配置 API Key 或调用失败，自动降级为关键词规则引擎。
  */
 
 // ---- 利好关键词 (加权匹配) ----
@@ -122,11 +130,52 @@ var NEUTRAL_COLUMNS = [
 exports.main = async (event) => {
   var stocks = event.stocks || [];
   var newsMap = event.newsMap || {};
+  var fundName = event.fundName || '';
 
+  // 先统计每只股票有多少新闻
+  var totalNewsCount = 0;
+  stocks.forEach(function(s) {
+    totalNewsCount += (newsMap[s.code] || []).length;
+  });
+
+  // 无新闻则直接返回
+  if (totalNewsCount === 0) {
+    return {
+      labeled: {},
+      suggest: { action: 'hold', reason: '近24小时无相关公告，暂无法进行分析。' },
+      stats: { totalNews: 0, bullish: 0, bearish: 0, neutral: 0, stocks: [] },
+      aiPowered: false
+    };
+  }
+
+  // 跑规则引擎（作为 AI 输入特征 + 降级备用）
+  var rulesResult = runRulesEngine(stocks, newsMap);
+
+  // 尝试调用 DeepSeek AI 分析
+  var aiResult = null;
+  try {
+    aiResult = await callDeepSeek(stocks, newsMap, rulesResult, fundName);
+  } catch (e) {
+    console.error('DeepSeek API 调用失败，降级为规则引擎:', e.message || e);
+  }
+
+  if (aiResult) {
+    aiResult.labeled = rulesResult.labeled;
+    aiResult.stats = rulesResult.stats;
+    aiResult.aiPowered = true;
+    return aiResult;
+  }
+
+  // 降级：使用规则引擎结果
+  rulesResult.aiPowered = false;
+  return rulesResult;
+};
+
+/* ---- 关键词规则引擎 (保持原有逻辑) ---- */
+function runRulesEngine(stocks, newsMap) {
   var labeled = {};
   var totalBull = 0, totalBear = 0, totalNeu = 0;
-  var stockScores = []; // [{code,name,weight,score:{bull,bear,neu}}]
-
+  var stockScores = [];
   stocks.forEach(function(s) {
     var code = s.code;
     var newsList = newsMap[code] || [];
@@ -166,19 +215,16 @@ exports.main = async (event) => {
   // 综合建议
   var total = totalBull + totalBear + totalNeu;
   var suggest = computeSuggestion(totalBull, totalBear, totalNeu, total, stockScores);
-
   return {
     labeled: labeled,
     suggest: suggest,
-    stats: {
-      totalNews: total,
+    stats: { totalNews: total,
       bullish: totalBull,
       bearish: totalBear,
       neutral: totalNeu,
-      stocks: stockScores
-    }
+      stocks: stockScores }
   };
-};
+}
 
 /* ---- 单条新闻分类 ---- */
 function classifyNews(text, column) {
@@ -318,4 +364,129 @@ function computeSuggestion(bull, bear, neu, total, stockScores) {
   }
 
   return { action: action, reason: reason };
+}
+
+
+// ============ DeepSeek AI 分析 ============
+
+function callDeepSeek(stocks, newsMap, rulesResult, fundName) {
+  return new Promise(function(resolve, reject) {
+    var apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
+      return reject(new Error('DEEPSEEK_API_KEY 未配置或无效'));
+    }
+
+    // 构建给 AI 的上下文
+    var stats = rulesResult.stats;
+    var stockDetails = [];
+
+    stocks.forEach(function(s) {
+      var newsList = newsMap[s.code] || [];
+      if (newsList.length === 0) return;
+      var labels = rulesResult.labeled[s.code] || [];
+      var newsSummary = [];
+      for (var i = 0; i < newsList.length; i++) {
+        var n = newsList[i];
+        var label = labels[i] || {};
+        var typeTag = label.type === 'bullish' ? '[利好]' :
+                     label.type === 'bearish' ? '[利空]' : '[中性]';
+        var extra = label.reason ? ' (' + label.reason + ')' : '';
+        newsSummary.push('  - ' + typeTag + ' ' + (n.title || '') + extra);
+      }
+      stockDetails.push(
+        '【' + (s.name || '') + '(' + s.code + ') 持仓权重 ' + (s.weight || 0) + '%】' +
+        '\n  利好/利空/中性: ' +
+        labels.filter(function(l) { return l.type === 'bullish'; }).length + '/' +
+        labels.filter(function(l) { return l.type === 'bearish'; }).length + '/' +
+        labels.filter(function(l) { return l.type === 'neutral'; }).length +
+        '\n' + newsSummary.join('\n')
+      );
+    });
+
+    var rulesSuggestion = rulesResult.suggest;
+    var fundLabel = fundName ? '【基金名称】' + fundName + '\n' : '';
+
+    var prompt = '你是一位专业的基金分析助手，根据基金重仓股的相关新闻，给出投资建议。\n\n' +
+      fundLabel +
+      '【新闻总览】利好' + stats.bullish + '条 / 利空' + stats.bearish + '条 / 中性' + stats.neutral + '条\n\n' +
+      '【各重仓股详情】\n' + stockDetails.join('\n\n') + '\n\n' +
+      '【规则引擎初步判断】' + rulesSuggestion.action + ' (' + rulesSuggestion.reason + ')\n\n' +
+      '请综合以上信息，输出一个 JSON 格式的分析结果，只包含 action 和 reason 两个字段。\n' +
+      'action 取值：buy（加仓）、sell（减仓）、hold（观望）。\n' +
+      'reason 是中文撰写的具体分析建议，80-120字，说明判断依据，结合个股信号。\n' +
+      '格式示例：{"action":"hold","reason":"..."}\n' +
+      '不要使用 markdown 代码块，直接输出纯 JSON。';
+
+    var postData = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: '你是专业的基金投资分析助手，只输出 JSON，不输出任何额外文字。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 600,
+      stream: false
+    });
+
+    var https = require('https');
+    var url = require('url');
+    var parsedUrl = url.parse('https://api.deepseek.com/v1/chat/completions');
+
+    var options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Length': Buffer.byteLength(postData, 'utf8')
+      },
+      timeout: 30000
+    };
+
+    var req = https.request(options, function(res) {
+      var body = '';
+      res.on('data', function(chunk) { body += chunk; });
+      res.on('end', function() {
+        try {
+          var resp = JSON.parse(body);
+
+          // 检查 HTTP 错误
+          if (res.statusCode !== 200) {
+            var errMsg = resp.error && resp.error.message ?
+              resp.error.message : ('HTTP ' + res.statusCode);
+            console.error('DeepSeek API 返回错误:', body);
+            return reject(new Error(errMsg));
+          }
+
+          var content = resp.choices && resp.choices[0] && resp.choices[0].message.content;
+          if (!content) return reject(new Error('DeepSeek 返回内容为空'));
+
+          // 尝试提取 JSON（可能被 markdown 代码块包裹）
+          var jsonStr = content.trim();
+          var jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+          var aiOutput = JSON.parse(jsonStr);
+
+          if (!aiOutput.action || !aiOutput.reason) {
+            return reject(new Error('DeepSeek 返回 JSON 缺少 action 或 reason'));
+          }
+          if (['buy', 'sell', 'hold'].indexOf(aiOutput.action) === -1) {
+            return reject(new Error('无效的 action: ' + aiOutput.action));
+          }
+
+          console.log('DeepSeek AI 分析成功: action=' + aiOutput.action);
+          resolve({ suggest: { action: aiOutput.action, reason: aiOutput.reason } });
+        } catch (e) {
+          reject(new Error('DeepSeek 响应解析失败: ' + e.message));
+        }
+      });
+    });
+
+    req.on('error', function(e) { reject(e); });
+    req.on('timeout', function() { req.abort(); reject(new Error('DeepSeek API 请求超时')); });
+    req.write(postData);
+    req.end();
+  });
 }

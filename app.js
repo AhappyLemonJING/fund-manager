@@ -379,10 +379,12 @@ App({
     });
   },
 
-  analyzeNews: function(stocks, newsMap) {
+  analyzeNews: function(stocks, newsMap, fundName) {
+    var data = { stocks: stocks, newsMap: newsMap };
+    if (fundName) data.fundName = fundName;
     return wx.cloud.callFunction({
       name: 'analyze',
-      data: { stocks: stocks, newsMap: newsMap }
+      data: data
     }).then(function(res) { return res.result; });
   }
 });

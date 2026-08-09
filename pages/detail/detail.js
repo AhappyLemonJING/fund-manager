@@ -373,7 +373,7 @@ Page({
   runAnalyze: function(stocks, newsMap) {
     var self = this;
     self.setData({ loadingAnalysis: true });
-    app.analyzeNews(stocks, newsMap).then(function(result) {
+    app.analyzeNews(stocks, newsMap, self.data.name).then(function(result) {
       if (!result) return;
       var labeled = result.labeled || {};
       var mergedMap = {};
@@ -401,7 +401,7 @@ Page({
         });
       });
       var suggest = result.suggest || { action: 'hold', reason: '暂无分析' };
-      self.setData({ newsMap: mergedMap, suggest: suggest, stats: result.stats || null, loadingAnalysis: false });
+      self.setData({ newsMap: mergedMap, suggest: suggest, stats: result.stats || null, aiPowered: result.aiPowered || false, loadingAnalysis: false });
       self.applySuggestion();
       var fund = app.globalData.funds[self._fundIndex];
       if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund._holdingsLoaded = true; }
