@@ -331,23 +331,25 @@ Page({
 
     self.setData({ loadingHoldings: true, holdingsError: '' });
 
-    app.fetchHoldings(code).then(function(data) {
-      if (data && data.stocks && data.stocks.length > 0) {
-        var sectors = data.sectors || [];
-        var stocks = data.stocks || [];
-        self.setData({ sectors: sectors, stocks: stocks, loadingHoldings: false });
-        if (fund) fund.holdings = { sectors: sectors, stocks: stocks };
-        self.loadNewsForStocks(stocks);
-      } else {
+   app.fetchHoldings(code).then(function(data) {
+      // 只有 parseHoldings 明确返回 error 才算解析失败；stocks 为空可能是债券/货币基金等正常情况
+      if (data && data.error) {
         var dump = data._dump ? data._dump : JSON.stringify(data).substring(0, 500);
         var holdings = fund && fund.holdings ? fund.holdings : { sectors: [], stocks: [] };
-        self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '数据解析失败 [响应: ' + dump + ']' });        if (holdings.stocks && holdings.stocks.length > 0) self.loadNewsForStocks(holdings.stocks);
+        self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '数据解析失败 [响应: ' + dump + ']' });
+        if (holdings.stocks && holdings.stocks.length > 0) self.loadNewsForStocks(holdings.stocks);
+      } else {
+        var sectors = (data && data.sectors) || [];
+        var stocks = (data && data.stocks) || [];
+        self.setData({ sectors: sectors, stocks: stocks, loadingHoldings: false });
+        if (fund) fund.holdings = { sectors: sectors, stocks: stocks };
+        if (stocks.length > 0) self.loadNewsForStocks(stocks);
       }
       if (!self.data.chartData) self.loadChart('1M');
     }).catch(function(err) {
       var holdings = fund && fund.holdings ? fund.holdings : { sectors: [], stocks: [] };
-      self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '持仓数据加载失败: ' + (err && err.message || '网络错误') });
-      self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '请求失败: ' + (err && err.message || JSON.stringify(err).substring(0, 200)) });      if (!self.data.chartData) self.loadChart('1M');
+      self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '请求失败: ' + (err && err.message || JSON.stringify(err).substring(0, 200)) });
+      if (!self.data.chartData) self.loadChart('1M');
     });
   },
 

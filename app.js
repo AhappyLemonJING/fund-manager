@@ -14,6 +14,116 @@ App({
     }
   },
 
+
+  // ============ 云同步 ============
+
+  _loadSyncMeta: function() {
+    try { return wx.getStorageSync('_sync_meta') || {}; } catch (e) { return {}; }
+  },
+
+  _saveSyncMeta: function(meta) {
+    wx.setStorageSync('_sync_meta', meta);
+  },
+
+  _touch: function(category) {
+    var meta = this._loadSyncMeta();
+    var now = Date.now();
+    var last = meta._seq || 0;
+    if (now <= last) now = last + 1;
+    meta._seq = now;
+    meta[category] = now;
+    this._saveSyncMeta(meta);
+    return now;
+  },
+
+  getLastSyncTime: function() {
+    var meta = this._loadSyncMeta();
+    return meta._lastSync || 0;
+  },
+
+  _markSynced: function() {
+    var meta = this._loadSyncMeta();
+    meta._lastSync = Date.now();
+    this._saveSyncMeta(meta);
+  },
+
+  prepareSyncData: function() {
+    var meta = this._loadSyncMeta();
+    var now = Date.now();
+    var codes = this.loadCodes();
+    var types = this.loadFundTypes();
+    var fundList = [];
+    for (var i = 0; i < codes.length; i++) {
+      var c = codes[i];
+      fundList.push({ code: c, type: types[c] || 'watch', updatedAt: meta.fundTypes || meta.fundCodes || now });
+    }
+    var rawGroups = this.loadGroups();
+    var groups = [];
+    for (var j = 0; j < rawGroups.length; j++) {
+      groups.push({ groupId: rawGroups[j].id, name: rawGroups[j].name, updatedAt: meta.groups || now });
+    }
+    var rawMap = this.loadGroupMap();
+    var groupMap = [];
+    var mk = Object.keys(rawMap);
+    for (var k = 0; k < mk.length; k++) groupMap.push({ fundCode: mk[k], groupId: rawMap[mk[k]], updatedAt: meta.groupMap || now });
+    var allTrades = {};
+    try { allTrades = wx.getStorageSync('fund_trades') || {}; } catch (e) {}
+    var trades = [];
+    var tk = Object.keys(allTrades);
+    for (var t = 0; t < tk.length; t++) {
+      var list = allTrades[tk[t]] || [];
+      for (var u = 0; u < list.length; u++) { var tr = list[u]; tr.tradeId = tr.id; delete tr.id; tr.fundCode = tk[t]; tr.updatedAt = meta.trades || now; trades.push(tr); }
+    }
+    var rawOv = this.loadPositionOverrides();
+    var overrides = [];
+    var ok = Object.keys(rawOv);
+    for (var o = 0; o < ok.length; o++) {
+      var ov = rawOv[ok[o]];
+      if (ov) overrides.push({ fundCode: ok[o], marketValue: ov.marketValue, profit: ov.profit, holdingDays: ov.holdingDays, updatedAt: meta.overrides || now });
+    }
+    console.log('prepareSyncData groups sample:', groups.length > 0 ? JSON.stringify(groups[0]) : 'empty');
+    return { fundList: fundList, groups: groups, groupMap: groupMap, trades: trades, overrides: overrides };
+  },
+
+  applySyncData: function(data) {
+    var fl = data.fundList || [];
+    var codes = [], types = {};
+    for (var i = 0; i < fl.length; i++) { codes.push(fl[i].code); types[fl[i].code] = fl[i].type || 'watch'; }
+    this.saveCodes(codes);
+    this.saveFundTypes(types);
+    var gl = data.groups || [];
+    var cg = [];
+    for (var j = 0; j < gl.length; j++) cg.push({ id: gl[j].groupId || gl[j].id, name: gl[j].name });
+    this.saveGroups(cg);
+    var gml = data.groupMap || [];
+    var gm = {};
+    for (var k = 0; k < gml.length; k++) gm[gml[k].fundCode] = gml[k].groupId;
+    this.saveGroupMap(gm);
+    var tl = data.trades || [];
+    var tbc = {};
+    for (var t = 0; t < tl.length; t++) {
+      var tr = tl[t], fc = tr.fundCode;
+      if (!tbc[fc]) tbc[fc] = [];
+      tbc[fc].push({ id: tr.tradeId || tr.id, date: tr.date, type: tr.type, shares: tr.shares, amount: tr.amount, nav: tr.nav, isBefore3pm: tr.isBefore3pm });
+    }
+    wx.setStorageSync('fund_trades', tbc);
+    var ol = data.overrides || [];
+    var om = {};
+    for (var o = 0; o < ol.length; o++) { var ov = ol[o]; om[ov.fundCode] = { marketValue: ov.marketValue, profit: ov.profit, holdingDays: ov.holdingDays }; }
+    this.savePositionOverrides(om);
+    this._markSynced();
+  },
+
+  syncData: function() {
+    var self = this;
+    var data = self.prepareSyncData();
+    return wx.cloud.callFunction({ name: 'sync', data: { data: data } }).then(function(res) {
+      if (res.result && res.result.success) { self.applySyncData(res.result.data); return { ok: true, time: new Date() }; }
+      var errs = (res.result && res.result.errors) || [];
+      return { ok: false, error: errs.length > 0 ? errs.join('; ') : '同步返回异常' };
+    }).catch(function(err) { return { ok: false, error: err.message || 'u7f51u7edcu9519u8bef' }; });
+  },
+
   // ============ 基金代码存储 ============
 
   loadCodes: function() {
@@ -22,16 +132,29 @@ App({
 
   saveCodes: function(codes) {
     wx.setStorageSync('fund_codes', codes);
+    this._touch('fundCodes');
   },
 
   // ============ 分组存储 ============
 
   loadGroups: function() {
-    try { return wx.getStorageSync('fund_groups') || []; } catch (e) { return []; }
+    try {
+      var groups = wx.getStorageSync('fund_groups') || [];
+      var fixed = false;
+      for (var i = 0; i < groups.length; i++) {
+        if (!groups[i].id) {
+          groups[i].id = 'g_' + Date.now() + '_' + i;
+          fixed = true;
+        }
+      }
+      if (fixed) { wx.setStorageSync('fund_groups', groups); }
+      return groups;
+    } catch (e) { return []; }
   },
 
   saveGroups: function(groups) {
     wx.setStorageSync('fund_groups', groups);
+    this._touch('groups');
     this.globalData.groups = groups;
   },
 
@@ -41,6 +164,7 @@ App({
 
   saveGroupMap: function(map) {
     wx.setStorageSync('fund_group_map', map);
+    this._touch('groupMap');
     this.globalData.groupMap = map;
   },
 
@@ -88,6 +212,7 @@ App({
 
   saveFundTypes: function(types) {
     wx.setStorageSync('fund_types', types);
+    this._touch('fundTypes');
   },
 
   setFundType: function(fundCode, type) {
@@ -115,6 +240,7 @@ App({
     try { all = wx.getStorageSync('fund_trades') || {}; } catch (e) {}
     all[code] = trades;
     wx.setStorageSync('fund_trades', all);
+    this._touch('trades');
   },
 
   addTrade: function(code, trade) {
@@ -187,6 +313,7 @@ App({
 
   savePositionOverrides: function(overrides) {
     wx.setStorageSync('position_overrides', overrides);
+    this._touch('overrides');
   },
 
   getPosOverride: function(code) {

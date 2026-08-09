@@ -72,12 +72,15 @@ function parseHoldings(body) {
   var cS = body.indexOf('content:"'), cE = body.indexOf('",arryear');
   if (cE < 0) cE = body.indexOf('",curyear');
   var content = (cS >= 0 && cE > cS) ? body.substring(cS + 9, cE) : '';
+  var source = 'content-pattern';
   if (!content) {
     try { var j = JSON.parse(body); content = (j.Data && typeof j.Data === 'string') ? j.Data : (j.content || ''); } catch(e) {}
+    if (content) source = 'json-parse';
   }
   if (!content) {
     var tb = body.indexOf('<tbody>');
     if (tb >= 0) { var te = body.indexOf('</tbody>', tb); if (te > tb) content = body.substring(tb, te + 8); }
+    if (content) source = 'tbody-fallback';
   }
   if (!content) return { error: 'no content', sectors: [], stocks: [], _dump: body.substring(0, 300) };
 
@@ -114,6 +117,7 @@ function parseHoldings(body) {
       if (sc && sn && w > 0 && stocks.length < 10) stocks.push({ code: sc, name: sn, weight: w });
     });
   }
+  if (!stocks.length) return { sectors: sectors, stocks: stocks, date: yr, _source: source };
   return { sectors: sectors, stocks: stocks, date: yr };
 }
 

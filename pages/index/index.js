@@ -60,6 +60,9 @@ Page({
     tradePl: null,
     // refresh
     refreshing: false,
+    syncing: false,
+    lastSyncTime: '',
+    showSyncConfirm: false,
     // 持仓手动覆盖编辑
     editMarketValue: '',
     editProfit: '',
@@ -232,17 +235,17 @@ Page({
 
   updatePortfolio: function() {
     var pf = app.calcPortfolio(app.globalData.funds);
-    pf.totalMarketStr = pf.totalMarket.toFixed(0);
-    pf.totalCostStr = pf.totalCost.toFixed(0);
+    pf.totalMarketStr = pf.totalMarket.toFixed(2);
+    pf.totalCostStr = pf.totalCost.toFixed(2);
     var profitSign = pf.totalProfit >= 0 ? '+' : '';
-    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(0);
+    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(2);
     pf.totalPctStr = profitSign + pf.totalPct.toFixed(2);
     for (var i = 0; i < pf.items.length; i++) {
       var pi = pf.items[i].pl;
       pi.avgCostStr = pi.avgCost.toFixed(3);
       pi.sharesStr = pi.shares.toFixed(0);
-      pi.marketValueStr = pi.marketValue.toFixed(0);
-      pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(0);
+      pi.marketValueStr = pi.marketValue.toFixed(2);
+      pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(2);
       pi.profitPctStr = (pi.profitPct >= 0 ? '+' : '') + pi.profitPct.toFixed(2);
       if (pi.holdingDays > 0) {
         pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
@@ -406,8 +409,8 @@ Page({
       tradeType: 'buy',
     tradeIsBefore3pm: true,
       tradePl: pl,
-      editMarketValue: ov ? String(ov.marketValue.toFixed(0)) : '',
-      editProfit: ov ? String(ov.profit.toFixed(0)) : '',
+      editMarketValue: ov ? String(ov.marketValue.toFixed(2)) : '',
+      editProfit: ov ? String(ov.profit.toFixed(2)) : '',
       editHoldingDays: ov ? String(ov.holdingDays) : '',
       tradeIsBefore3pm: true,
       tradeDate: now.getFullYear() + '-' +
@@ -689,4 +692,41 @@ Page({
     this.applyFilter();
     wx.showToast({ title: '已重命名', icon: 'none', duration: 1000 });
   },
+
+  // ============ 云同步 ============
+
+  doSync: function() {
+    if (this.data.syncing) return;
+    var lastCloud = app.getLastSyncTime();
+    if (lastCloud === 0) {
+      this.setData({ showSyncConfirm: true });
+      return;
+    }
+    this._executeSync();
+  },
+
+  _executeSync: function() {
+    var self = this;
+    self.setData({ syncing: true, showSyncConfirm: false });
+    app.syncData().then(function(result) {
+      if (result.ok) {
+        var t = result.time;
+        var ts = t.getHours().toString().padStart(2, '0') + ':' +
+                 t.getMinutes().toString().padStart(2, '0');
+        self.setData({ syncing: false, lastSyncTime: ts });
+        app.globalData.groups = app.loadGroups();
+        app.globalData.groupMap = app.loadGroupMap();
+        self.buildGroupTabs();
+        var codes = app.loadCodes();
+        if (codes.length > 0) self.loadFunds(codes);
+        wx.showToast({ title: '一步同步完成', icon: 'success', duration: 1500 });
+      } else {
+        self.setData({ syncing: false });
+        wx.showToast({ title: result.error || '同步失败', icon: 'none', duration: 2000 });
+      }
+    });
+  },
+
+  hideSyncConfirm: function() { this.setData({ showSyncConfirm: false }); },
+  confirmSync: function() { this._executeSync(); },
 });

@@ -1,4 +1,23 @@
 <navigation-bar title="基金管理" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
+<!-- 云同步状态栏 -->
+<view class="sync-bar">
+  <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步')}}</text>
+  <view class="sync-btn {{syncing ? 'syncing' : ''}}" bindtap="doSync">
+    <text>{{syncing ? '⟳' : '☁️'}}</text>
+  </view>
+</view>
+
+<!-- 首次同步确认弹窗 -->
+<view wx:if="{{showSyncConfirm}}" class="modal-mask" bindtap="hideSyncConfirm">
+  <view class="modal modal-confirm" catch:tap="noop">
+    <view class="modal-title">首次云同步</view>
+    <view class="confirm-text">检测到云端可能已有数据。<text style="display:block;font-size:24rpx;color:var(--text-dim);margin-top:12rpx;">将合并本地与云端数据（保留最新版本）</text></view>
+    <view class="modal-btns">
+      <view class="btn btn-cancel" bindtap="hideSyncConfirm">取消</view>
+      <view class="btn btn-ok" bindtap="confirmSync">开始同步</view>
+    </view>
+  </view>
+</view>
 
 <!-- 持仓概况 (仅持仓tab显示) -->
 <view wx:if="{{activeTab === 'position' && portfolio.items.length > 0}}" class="pf-summary">
@@ -40,7 +59,7 @@
     {{item.name}}
   </view>
   <view class="tab-item tab-add-group" bindtap="showGroupMgr">+ 分组</view>
-</scroll-view>
+  <view class="tab-bar-spacer"></view></scroll-view>
 
 <scroll-view class="scrollarea" scroll-y type="list"
   refresher-enabled refresher-triggered="{{refreshing}}"
