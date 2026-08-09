@@ -196,7 +196,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 /* ========== 弹窗通用 ========== */
 .modal-mask {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.55); z-index: 100;
+  background: rgba(0,0,0,0.55); z-index: 300;
   display: flex; align-items: center; justify-content: center;
 }
 .modal {
