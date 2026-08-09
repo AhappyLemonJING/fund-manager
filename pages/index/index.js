@@ -56,9 +56,14 @@ Page({
     tradeAmount: '',
     tradeDate: '',
     tradeType: 'buy',
+    tradeIsBefore3pm: true,
     tradePl: null,
     // refresh
-    refreshing: false
+    refreshing: false,
+    // 持仓手动覆盖编辑
+    editMarketValue: '',
+    editProfit: '',
+    editHoldingDays: ''
   },
 
   noop: function() {},
@@ -236,8 +241,12 @@ Page({
       var pi = pf.items[i].pl;
       pi.avgCostStr = pi.avgCost.toFixed(3);
       pi.sharesStr = pi.shares.toFixed(0);
+      pi.marketValueStr = pi.marketValue.toFixed(0);
       pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(0);
       pi.profitPctStr = (pi.profitPct >= 0 ? '+' : '') + pi.profitPct.toFixed(2);
+      if (pi.holdingDays > 0) {
+        pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
+      }
     }
     this.setData({ portfolio: pf });
   },
@@ -367,6 +376,9 @@ Page({
     var nav = parseFloat(fund.nav) || 0;
     var trades = app.loadTrades(fund.code);
     var pl = app.calcProfitLoss(fund.code, nav);
+    pl = app.applyPosOverrides(fund.code, nav, pl);
+    // 加载覆盖值到编辑字段
+    var ov = app.getPosOverride(fund.code);
     // 格式化展示字符串
     pl.sharesStr = pl.shares.toFixed(2);
     pl.avgCostStr = pl.avgCost.toFixed(4);
@@ -392,7 +404,12 @@ Page({
       tradeShares: '',
       tradeAmount: '',
       tradeType: 'buy',
+    tradeIsBefore3pm: true,
       tradePl: pl,
+      editMarketValue: ov ? String(ov.marketValue.toFixed(0)) : '',
+      editProfit: ov ? String(ov.profit.toFixed(0)) : '',
+      editHoldingDays: ov ? String(ov.holdingDays) : '',
+      tradeIsBefore3pm: true,
       tradeDate: now.getFullYear() + '-' +
         String(now.getMonth() + 1).padStart(2, '0') + '-' +
         String(now.getDate()).padStart(2, '0')
@@ -403,8 +420,60 @@ Page({
 
   onTradeShares: function(e) { this.setData({ tradeShares: e.detail.value }); },
   onTradeAmount: function(e) { this.setData({ tradeAmount: e.detail.value }); },
-  onTradeDate: function(e) { this.setData({ tradeDate: e.detail.value }); },
+  onTradeDateChange: function(e) { this.setData({ tradeDate: e.detail.value }); },
+  onTradeTime: function(e) { this.setData({ tradeIsBefore3pm: e.currentTarget.dataset.id === 'before' }); },
   onTradeType: function(e) { this.setData({ tradeType: e.currentTarget.dataset.id }); },
+
+  onEditMarketValue: function(e) { this.setData({ editMarketValue: e.detail.value }); },
+  onEditProfit: function(e) { this.setData({ editProfit: e.detail.value }); },
+  onEditHoldingDays: function(e) { this.setData({ editHoldingDays: e.detail.value }); },
+
+  savePosOverride: function() {
+    var code = this.data.tradeFundCode;
+    var nav = parseFloat(this.data.tradeFundNav) || 0;
+    var mv = parseFloat(this.data.editMarketValue) || 0;
+    var pf = parseFloat(this.data.editProfit) || 0;
+    var daysStr = (this.data.editHoldingDays || '').trim();
+    var hasDays = daysStr !== '';
+    var days = hasDays ? parseInt(daysStr) : null;
+    if (mv <= 0) { wx.showToast({ title: '请输入持仓金额', icon: 'none' }); return; }
+    var override = { marketValue: mv, profit: pf };
+    if (hasDays) override.holdingDays = days;
+    app.setPosOverride(code, override);
+    // 刷新显示
+    var pl = app.calcProfitLoss(code, nav);
+    pl = app.applyPosOverrides(code, nav, pl);
+    pl.sharesStr = pl.shares.toFixed(2);
+    pl.avgCostStr = pl.avgCost.toFixed(4);
+    pl.marketValueStr = pl.marketValue.toFixed(2);
+    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
+    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
+    this.setData({ tradePl: pl });
+    this.applyFilter();
+    this.updatePortfolio();
+    wx.showToast({ title: '覆盖值已保存', icon: 'success', duration: 1000 });
+  },
+
+  clearPosOverride: function() {
+    var code = this.data.tradeFundCode;
+    var nav = parseFloat(this.data.tradeFundNav) || 0;
+    app.setPosOverride(code, null);
+    var pl = app.calcProfitLoss(code, nav);
+    pl.sharesStr = pl.shares.toFixed(2);
+    pl.avgCostStr = pl.avgCost.toFixed(4);
+    pl.marketValueStr = pl.marketValue.toFixed(2);
+    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
+    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
+    this.setData({
+      tradePl: pl,
+      editMarketValue: '',
+      editProfit: '',
+      editHoldingDays: ''
+    });
+    this.applyFilter();
+    this.updatePortfolio();
+    wx.showToast({ title: '已清除覆盖值', icon: 'none', duration: 1000 });
+  },
 
   addTrade: function() {
     var shares = parseFloat(this.data.tradeShares) || 0;
@@ -429,11 +498,13 @@ Page({
       shares: shares,
       amount: amount,
       nav: nav,
+      isBefore3pm: this.data.tradeIsBefore3pm,
       id: 't_' + Date.now()
     };
 
     var trades = app.addTrade(code, trade);
     var pl = app.calcProfitLoss(code, nav);
+    pl = app.applyPosOverrides(code, nav, pl);
     pl.sharesStr = pl.shares.toFixed(2);
     pl.avgCostStr = pl.avgCost.toFixed(4);
     pl.marketValueStr = pl.marketValue.toFixed(2);
@@ -465,6 +536,7 @@ Page({
     var nav = parseFloat(this.data.tradeFundNav) || 0;
     var trades = app.deleteTrade(code, idx);
     var pl = app.calcProfitLoss(code, nav);
+    pl = app.applyPosOverrides(code, nav, pl);
     pl.sharesStr = pl.shares.toFixed(2);
     pl.avgCostStr = pl.avgCost.toFixed(4);
     pl.marketValueStr = pl.marketValue.toFixed(2);

@@ -27,6 +27,7 @@ Page({
     // 走势图
     chartLoading: false,
     chartRange: '1M',  // 1M | 3M | 6M | 1Y
+    benchmarkStatus: '',
     chartData: null,   // { dates, navs, benchmark, benchmarkDates }
     chartCanvasReady: false
   },
@@ -91,7 +92,7 @@ Page({
     else if (range === '6M') days = 132;
     else days = 250;  // 1Y
 
-    self.setData({ chartRange: range, chartLoading: true });
+    self.setData({ chartRange: range, chartLoading: true, benchmarkStatus: '加载中...' });
 
     // 先拉基金历史净值（必须成功才能画图）
     app.fetchHistory(code, days).then(function(histData) {
@@ -111,13 +112,14 @@ Page({
       // 渲染基础图表
       self.setData({
         chartData: { dates: dates, navs: navs, benchmark: [], benchmarkDates: [] },
-        chartLoading: false
+        chartLoading: false,
+        benchmarkStatus: '加载中...'
       });
       self.drawChart();
 
       // 异步拉取沪深300基准（不阻塞基础图表）
       app.fetchBenchmark(days).then(function(benchData) {
-        if (!benchData || benchData.length === 0) return;
+        if (!benchData || benchData.length === 0) { self.setData({ benchmarkStatus: '无数据' }); return; }
 
         var benchMap = {};
         for (var i = 0; i < benchData.length; i++) {
@@ -137,10 +139,11 @@ Page({
         self.setData({
           chartData: { dates: dates, navs: navs, benchmark: benchVals, benchmarkDates: benchDates }
         });
+        self.setData({ benchmarkStatus: benchVals.length + ' 条匹配' });
         self.drawChart();
       }).catch(function(err) {
+        self.setData({ benchmarkStatus: '无数据' });
         console.error('fetchBenchmark error:', err);
-        // 基准加载失败不影响主图表
       });
     }).catch(function(err) {
       console.error('fetchHistory error:', err);
@@ -243,7 +246,7 @@ Page({
     ctx.setLineDash([]);
 
     // 基准线 (沪深300)
-    if (benchVals && benchVals.length > 0 && benchVals.length === navs.length) {
+    if (benchVals && benchVals.length > 0) {
       ctx.strokeStyle = '#8b949e';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
@@ -298,14 +301,13 @@ Page({
     ctx.textAlign = 'left';
     ctx.fillText('净值', lx + 16, ly + 4);
 
-    if (benchVals && benchVals.length > 0) {
-      lx += 70;
-      ctx.fillStyle = '#8b949e';
-      ctx.fillRect(lx, ly, 12, 3);
-      ctx.fillStyle = '#e6edf3';
-      ctx.fillText('沪深300', lx + 16, ly + 4);
-    }
-  },
+    ctx.fillStyle = '#8b949e';
+    lx += 80;    ctx.fillRect(lx, ly, 12, 3);
+    var bmLabel = (benchVals && benchVals.length > 0) ? '沪深300' : '沪深300(无)';
+    ctx.fillStyle = benchVals && benchVals.length > 0 ? '#e6edf3' : '#6e7681';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(bmLabel, lx + 16, ly + 4);  },
 
   // ============ 加载持仓和新闻 ============
 
@@ -337,17 +339,15 @@ Page({
         if (fund) fund.holdings = { sectors: sectors, stocks: stocks };
         self.loadNewsForStocks(stocks);
       } else {
-        var dump = (data && data._dump) ? ' [响应: ' + data._dump + ']' : '';
+        var dump = data._dump ? data._dump : JSON.stringify(data).substring(0, 500);
         var holdings = fund && fund.holdings ? fund.holdings : { sectors: [], stocks: [] };
-        self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: dump ? ('持仓数据解析失败' + dump) : '' });
-        if (holdings.stocks && holdings.stocks.length > 0) self.loadNewsForStocks(holdings.stocks);
+        self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '数据解析失败 [响应: ' + dump + ']' });        if (holdings.stocks && holdings.stocks.length > 0) self.loadNewsForStocks(holdings.stocks);
       }
       if (!self.data.chartData) self.loadChart('1M');
     }).catch(function(err) {
       var holdings = fund && fund.holdings ? fund.holdings : { sectors: [], stocks: [] };
       self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '持仓数据加载失败: ' + (err && err.message || '网络错误') });
-      if (holdings.stocks && holdings.stocks.length > 0) self.loadNewsForStocks(holdings.stocks);
-      if (!self.data.chartData) self.loadChart('1M');
+      self.setData({ sectors: holdings.sectors || [], stocks: holdings.stocks || [], loadingHoldings: false, holdingsError: '请求失败: ' + (err && err.message || JSON.stringify(err).substring(0, 200)) });      if (!self.data.chartData) self.loadChart('1M');
     });
   },
 

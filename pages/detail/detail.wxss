@@ -72,7 +72,7 @@ page {
 .news-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; }
 .news-text { font-size: 26rpx; line-height: 1.5; word-break: break-all; }
 .news-reason { font-size: 22rpx; color: var(--text-dim); line-height: 1.3; }
-.news-tag { font-size: 22rpx; font-weight: 700; padding: 4rpx 16rpx; border-radius: 20rpx; flex-shrink: 0; }
+.news-tag { font-size: 22rpx; font-weight: 700; line-height: 1; padding: 4rpx 16rpx; border-radius: 20rpx; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .t-bull { background: var(--red-bg); color: var(--red); }
 .t-bear { background: var(--green-bg); color: var(--green); }
 .t-neu { background: var(--blue-bg); color: var(--blue); }
@@ -80,7 +80,7 @@ page {
 /* 加载和状态 */
 .loading-line { font-size: 24rpx; color: var(--text-dim); padding: 12rpx 0; }
 .loading-tag { font-size: 20rpx; color: var(--accent); font-weight: 400; letter-spacing: 0; }
-.stats-tag { font-size: 20rpx; font-weight: 400; letter-spacing: 0; color: var(--text-dim); }
+.stats-tag { font-size: 20rpx; font-weight: 400; letter-spacing: 0; color: var(--text-dim); vertical-align: middle;}
 .error-line { font-size: 24rpx; color: var(--red); padding: 12rpx 0; }
 .empty-line { font-size: 24rpx; color: var(--text-dim); padding: 12rpx 0; }
 

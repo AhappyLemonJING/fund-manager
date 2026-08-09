@@ -22,7 +22,7 @@
 
     <!-- 净值走势图 -->
     <view class="section">
-      <view class="sec-title">净值走势</view>
+      <view class="sec-title">净值走势 <text wx:if="{{benchmarkStatus}}" style="font-weight:400;font-size:22rpx;color:var(--text-dim);">{{benchmarkStatus}}</text></view>
       <view class="chart-ranges">
         <view class="cr-item {{chartRange === '1M' ? 'cr-active' : ''}}" bindtap="switchChartRange" data-range="1M">近1月</view>
         <view class="cr-item {{chartRange === '3M' ? 'cr-active' : ''}}" bindtap="switchChartRange" data-range="3M">近3月</view>
@@ -72,12 +72,12 @@
               <text class="news-text">{{n.title}}</text>
               <text wx:if="{{n.timeAgo}}" class="news-time">{{n.timeAgo}}</text>
               <text wx:if="{{n.reason}}" class="news-reason">{{n.reason}}</text>
-            </view>
-            <text class="news-tag {{n.type === 'bullish' ? 't-bull' : n.type === 'bearish' ? 't-bear' : 't-neu'}}">
-              <text wx:if="{{n.source === 'wscn'}}" class="news-source">快讯</text>
-              {{n.type === 'bullish' ? '利好' : n.type === 'bearish' ? '利空' : '中性'}}
-            </text>
-          </view>
+           </view>
+           <view class="news-tag {{n.type === 'bullish' ? 't-bull' : n.type === 'bearish' ? 't-bear' : 't-neu'}}">
+             <text wx:if="{{n.source === 'wscn'}}" class="news-source">快讯</text>
+             {{n.type === 'bullish' ? '利好' : n.type === 'bearish' ? '利空' : '中性'}}
+           </view>
+         </view>
         </block>
         <view wx:else style="font-size:24rpx;color:var(--text-dim);padding:12rpx 0;">近7日无相关公告</view>
       </view>

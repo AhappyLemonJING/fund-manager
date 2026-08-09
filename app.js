@@ -151,7 +151,77 @@ App({
     var profitPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
     return {
       shares: totalShares, cost: totalCost, avgCost: avgCost,
-      marketValue: marketValue, profit: profit, profitPct: profitPct
+      marketValue: marketValue, profit: profit, profitPct: profitPct,
+      holdingDays: this.calcHoldingDays(code)
+    };
+  },
+
+  calcHoldingDays: function(code) {
+    var trades = this.loadTrades(code);
+    if (trades.length === 0) return 0;
+    var earliestEffective = null;
+    for (var i = 0; i < trades.length; i++) {
+      var t = trades[i];
+      if (t.type !== 'buy') continue;
+      var parts = t.date.split('-');
+      var buyDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      var offset = (t.isBefore3pm !== false) ? 1 : 2;
+      var effective = new Date(buyDate.getTime() + offset * 86400000);
+      if (!earliestEffective || effective < earliestEffective) {
+        earliestEffective = effective;
+      }
+    }
+    if (!earliestEffective) return 0;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    earliestEffective.setHours(0, 0, 0, 0);
+    var diff = Math.floor((today.getTime() - earliestEffective.getTime()) / 86400000);
+    return Math.max(0, diff);
+  },
+
+  // ============ 持仓金额/收益/天数 手动覆盖 ============
+
+  loadPositionOverrides: function() {
+    try { return wx.getStorageSync('position_overrides') || {}; } catch (e) { return {}; }
+  },
+
+  savePositionOverrides: function(overrides) {
+    wx.setStorageSync('position_overrides', overrides);
+  },
+
+  getPosOverride: function(code) {
+    var all = this.loadPositionOverrides();
+    return all[code] || null;
+  },
+
+  setPosOverride: function(code, override) {
+    var all = this.loadPositionOverrides();
+    if (!override) {
+      delete all[code];
+    } else {
+      all[code] = override;
+    }
+    this.savePositionOverrides(all);
+  },
+
+  applyPosOverrides: function(code, nav, pl) {
+    var ov = this.getPosOverride(code);
+    if (!ov) return pl;
+    var marketValue = ov.marketValue;
+    var profit = ov.profit;
+    var cost = marketValue - profit;
+    var profitPct = cost > 0 ? (profit / cost) * 100 : 0;
+    var avgCost = nav > 0 ? cost / (marketValue / nav) : 0;
+    if (isNaN(avgCost) || !isFinite(avgCost)) avgCost = 0;
+    return {
+      shares: nav > 0 ? marketValue / nav : pl.shares,
+      cost: cost,
+      avgCost: avgCost,
+      marketValue: marketValue,
+      profit: profit,
+      profitPct: profitPct,
+      override: true,
+      holdingDays: ov.holdingDays || 0
     };
   },
 
@@ -168,6 +238,7 @@ App({
       var nav = parseFloat(f.nav) || 0;
       if (nav <= 0) continue;
       var pl = this.calcProfitLoss(f.code, nav);
+      pl = this.applyPosOverrides(f.code, nav, pl);
       if (pl.shares <= 0) continue;
       totalCost += pl.cost;
       totalMarket += pl.marketValue;
@@ -275,7 +346,7 @@ App({
     var ed = endDate.getFullYear() + '-' +
       String(endDate.getMonth() + 1).padStart(2, '0') + '-' +
       String(endDate.getDate()).padStart(2, '0');
-    return this.callApi('benchmark', '000300', { startDate: sd, endDate: ed })
+    return this.callApi('history', '160706', { pageIndex: 1, pageSize: 20, startDate: sd, endDate: ed })
       .then(function(data) {
         var list = (data.Data && data.Data.LSJZList) || (data.list || []);
         list.reverse();

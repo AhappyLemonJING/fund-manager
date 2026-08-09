@@ -5,20 +5,20 @@
   <view class="pf-row">
     <view class="pf-item">
       <text class="pf-label">总资产</text>
-      <text class="pf-val">{{portfolio.totalMarketStr}}</text>
+      <text class="pf-val pf-val-main">{{portfolio.totalMarketStr}}</text>
     </view>
+    <view class="pf-divider"></view>
     <view class="pf-item">
       <text class="pf-label">总成本</text>
-      <text class="pf-val dim">{{portfolio.totalCostStr}}</text>
+      <text class="pf-val pf-val-cost">{{portfolio.totalCostStr}}</text>
     </view>
+    <view class="pf-divider"></view>
     <view class="pf-item">
       <text class="pf-label">持仓收益</text>
-      <text class="pf-val {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">
-        {{portfolio.totalProfitStr}}
-      </text>
-      <text class="pf-pct {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}" style="font-size:22rpx;">
-        {{portfolio.totalPctStr}}%
-      </text>
+      <view class="pf-profit-line">
+        <text class="pf-val {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalProfitStr}}</text>
+        <text class="pf-pct {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalPctStr}}%</text>
+      </view>
     </view>
   </view>
 </view>
@@ -74,11 +74,21 @@
       <!-- 持仓盈亏行 (仅持仓tab) -->
       <view wx:if="{{activeTab === 'position' && portfolio}}" class="card-pl">
         <block wx:for="{{portfolio.items}}" wx:key="code" wx:for-item="pi">
-          <view wx:if="{{pi.code === item.code}}" class="pl-row">
+          <view wx:if="{{pi.code === item.code && pi.pl.override}}" class="pl-row">
+            <text class="pl-cost">持仓 {{pi.pl.marketValueStr}}元 · {{pi.pl.holdingDaysStr}}</text>
+            <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
+              {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
+            </text>
+          </view>
+          <view wx:elif="{{pi.code === item.code}}" class="pl-row">
             <text class="pl-cost">成本 {{pi.pl.avgCostStr}} · {{pi.pl.sharesStr}}份</text>
             <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
               {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
             </text>
+          </view>
+          <view wx:if="{{pi.code === item.code && pi.pl.holdingDays > 0 && !pi.pl.override}}" class="pl-row">
+            <text></text>
+            <text class="pl-days">持有{{pi.pl.holdingDays}}天</text>
           </view>
         </block>
       </view>
@@ -154,6 +164,26 @@
     <view wx:elif="{{tradeFundNav}}" style="text-align:center;padding:20rpx;color:var(--text-dim);font-size:24rpx;">
       暂无交易记录，当前净值 {{tradeFundNav}}
     </view>
+    <!-- 手动覆盖编辑 -->
+    <view class="trade-pos-edit">
+      <view class="sec-title-sm">持仓覆盖编辑</view>
+      <view class="tpe-row">
+        <text class="tpe-label">持仓金额(元)</text>
+        <input class="modal-input tpe-input" placeholder="{{tradePl.marketValueStr}}" placeholder-style="color:#6e7681" value="{{editMarketValue}}" bindinput="onEditMarketValue" type="digit"/>
+      </view>
+      <view class="tpe-row">
+        <text class="tpe-label">持有收益(元)</text>
+        <input class="modal-input tpe-input" placeholder="{{tradePl.profitStr}}" placeholder-style="color:#6e7681" value="{{editProfit}}" bindinput="onEditProfit" type="digit"/>
+      </view>
+      <view class="tpe-row">
+        <text class="tpe-label">持有天数</text>
+        <input class="modal-input tpe-input" placeholder="例如: 30" placeholder-style="color:#6e7681" value="{{editHoldingDays}}" bindinput="onEditHoldingDays" type="number"/>
+      </view>
+      <view class="tpe-btns">
+        <view class="btn btn-sm btn-cancel" bindtap="clearPosOverride">清除</view>
+        <view class="btn btn-sm btn-ok" bindtap="savePosOverride">保存</view>
+      </view>
+    </view>
     <!-- 历史交易 -->
     <view wx:if="{{tradeRecords.length > 0}}" class="trade-hist">
       <view class="sec-title-sm">历史记录</view>
@@ -177,7 +207,13 @@
       </view>
       <input class="modal-input" style="margin-bottom:12rpx;" placeholder="份额" placeholder-style="color:#6e7681" value="{{tradeShares}}" bindinput="onTradeShares" type="digit"/>
       <input class="modal-input" style="margin-bottom:12rpx;" placeholder="金额 (元)" placeholder-style="color:#6e7681" value="{{tradeAmount}}" bindinput="onTradeAmount" type="digit"/>
-      <input class="modal-input" placeholder="日期" placeholder-style="color:#6e7681" value="{{tradeDate}}" bindinput="onTradeDate"/>
+      <picker mode="date" value="{{tradeDate}}" bindchange="onTradeDateChange">
+        <view class="picker-display">{{tradeDate || '选择日期'}}</view>
+      </picker>
+      <view class="trade-time-row">
+        <view class="type-pick {{tradeIsBefore3pm ? 'type-pick-sel' : ''}}" bindtap="onTradeTime" data-id="before" style="flex:1;text-align:center;font-size:24rpx;">下午三点前</view>
+        <view class="type-pick {{!tradeIsBefore3pm ? 'type-pick-sel' : ''}}" bindtap="onTradeTime" data-id="after" style="flex:1;text-align:center;font-size:24rpx;">下午三点后</view>
+      </view>
       <view class="modal-btns">
         <view class="btn btn-cancel" bindtap="hideTrade">关闭</view>
         <view class="btn btn-ok" bindtap="addTrade">记录</view>
