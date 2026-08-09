@@ -188,6 +188,7 @@ Page({
     var id = e.currentTarget.dataset.id;
     this.setData({ activeGroup: id });
     this.applyFilter();
+    this.updatePortfolio();
   },
 
     goMarket: function() {
@@ -264,12 +265,25 @@ Page({
   // ============ 持仓总览 ============
 
   updatePortfolio: function() {
-    var pf = app.calcPortfolio(app.globalData.funds);
+    // 按当前分组筛选基金
+    var activeGroup = this.data.activeGroup;
+    var map = app.globalData.groupMap;
+    var filteredFunds = app.globalData.funds;
+    if (activeGroup !== 'all') {
+      if (activeGroup === 'ungrouped') {
+        filteredFunds = filteredFunds.filter(function(f) { return !map[f.code]; });
+      } else {
+        filteredFunds = filteredFunds.filter(function(f) { return map[f.code] === activeGroup; });
+      }
+    }
+    var pf = app.calcPortfolio(filteredFunds);
     pf.totalMarketStr = pf.totalMarket.toFixed(2);
     pf.totalCostStr = pf.totalCost.toFixed(2);
-    var profitSign = pf.totalProfit >= 0 ? '+' : '';
-    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(2);
-    pf.totalPctStr = profitSign + pf.totalPct.toFixed(2);
+    var dailySign = pf.totalDailyProfit >= 0 ? '+' : '';
+    pf.totalDailyProfitStr = dailySign + pf.totalDailyProfit.toFixed(2);
+    var dailyDenom = pf.totalMarket - pf.totalDailyProfit;
+    var dailyPct = dailyDenom > 0 ? (pf.totalDailyProfit / dailyDenom) * 100 : 0;
+    pf.totalDailyPctStr = (dailyPct >= 0 ? '+' : '') + dailyPct.toFixed(2);
     for (var i = 0; i < pf.items.length; i++) {
       var pi = pf.items[i].pl;
       pi.avgCostStr = pi.avgCost.toFixed(3);

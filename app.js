@@ -357,6 +357,7 @@ App({
   calcPortfolio: function(funds) {
     var totalCost = 0;
     var totalMarket = 0;
+    var totalDailyProfit = 0;
     var list = [];
     for (var i = 0; i < funds.length; i++) {
       var f = funds[i];
@@ -369,12 +370,17 @@ App({
       if (pl.shares <= 0) continue;
       totalCost += pl.cost;
       totalMarket += pl.marketValue;
+      // 当日持仓收益：当日净值变动带来的持有收益变化
+      var dailyPct = parseFloat(f.changePct) || 0;
+      var dailyProfit = pl.marketValue * dailyPct / (100 + dailyPct);
+      pl.dailyProfit = dailyProfit;
+      totalDailyProfit += dailyProfit;
       list.push({ code: f.code, name: f.name, nav: nav, pl: pl });
     }
     var totalProfit = totalMarket - totalCost;
     var totalPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
     return { totalCost: totalCost, totalMarket: totalMarket, totalProfit: totalProfit,
-      totalPct: totalPct, items: list };
+      totalPct: totalPct, totalDailyProfit: totalDailyProfit, items: list };
   },
 
   // ============ API ============

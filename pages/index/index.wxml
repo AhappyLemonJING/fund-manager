@@ -18,10 +18,10 @@
     </view>
     <view class="pf-divider"></view>
     <view class="pf-item">
-      <text class="pf-label">持仓收益</text>
+      <text class="pf-label">当日持仓收益</text>
       <view class="pf-profit-line">
-        <text class="pf-val {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalProfitStr}}</text>
-        <text class="pf-pct {{portfolio.totalProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalPctStr}}%</text>
+        <text class="pf-val {{portfolio.totalDailyProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalDailyProfitStr}}</text>
+        <text class="pf-pct {{portfolio.totalDailyProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalDailyPctStr}}%</text>
       </view>
     </view>
   </view>
