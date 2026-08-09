@@ -18,6 +18,7 @@
       <view wx:if="{{navDate}}" class="d-date">净值日期: {{navDate}}
         <text wx:if="{{lastUpdateTime}}" style="margin-left:16rpx;color:var(--text-dim);">刷新 {{lastUpdateTime}}</text>
       </view>
+      <view class="d-trade-btn" bindtap="openTradeRecords">交易记录</view>
     </view>
 
     <!-- 净值走势图 -->
@@ -94,6 +95,62 @@
         <view class="rec-action {{suggestClass}}">{{suggestLabel}}</view>
         <view class="rec-reason">{{suggest.reason}}</view>
       </block>
+        <!-- 当日信号（融入当日涨跌幅的分析） -->
+    <view wx:if="{{suggestDaily}}" class="rec rec-daily {{suggestDailyClass}}">
+      <view wx:if="{{loadingAnalysis}}" class="loading-line">AI 分析中...</view>
+      <block wx:else>
+        <view class="rec-label">当日信号</view>
+        <view class="rec-action {{suggestDailyClass}}">{{suggestDailyLabel}}</view>
+        <view class="rec-reason">{{suggestDaily.reason}}</view>
+      </block>
+    </view>
+
+</view>
+  </scroll-view>
+</view>
+
+<!-- 交易记录弹窗 -->
+<view wx:if="{{showTradePanel}}" class="trade-mask" bindtap="closeTradeRecords"></view>
+<view class="trade-panel {{showTradePanel ? 'trade-panel-show' : ''}}">
+  <view class="tp-header">
+    <text class="tp-title">交易记录</text>
+    <view class="tp-close" bindtap="closeTradeRecords">✕</view>
+  </view>
+  <scroll-view class="tp-list" scroll-y>
+    <block wx:if="{{tradeRecords.length > 0}}">
+      <view wx:for="{{tradeRecords}}" wx:key="id" class="tp-item">
+        <view class="tp-item-left">
+          <view class="tp-item-date">{{item.date}}</view>
+          <view class="tp-item-type {{item.type === 'buy' ? 't-buy' : 't-sell'}}">
+            {{item.type === 'buy' ? '买入' : '卖出'}}
+            <text wx:if="{{item.autoInvest}}" class="tp-auto-tag">定投</text>
+          </view>
+          <view wx:if="{{item.type === 'buy'}}" class="tp-item-detail">
+            {{item.amount}} 元 / {{item.shares}} 份
+          </view>
+          <view wx:elif="{{item.type === 'sell'}}" class="tp-item-detail">
+            {{item.shares}} 份 / {{item.amount}} 元
+          </view>
+          <view class="tp-item-nav">净值 {{item.nav}}</view>
+        </view>
+        <view wx:if="{{item.canDelete}}" class="tp-del-btn" bindtap="deleteTradeRecord" data-id="{{item.id}}">删除</view>
+      </view>
+    </block>
+    <block wx:if="{{tradePlans.length > 0}}">
+      <view class="tp-section-title">定投计划</view>
+      <view wx:for="{{tradePlans}}" wx:key="id" class="tp-item tp-plan-item">
+        <view class="tp-item-left">
+          <view class="tp-item-type t-plan">{{item.periodLabel}} · {{item.amount}} 元/期</view>
+          <view wx:if="{{item.lastExecuted}}" class="tp-item-detail">最近执行: {{item.lastExecuted}}</view>
+          <view wx:else class="tp-item-detail">待执行</view>
+        </view>
+        <view class="tp-plan-status {{item.active ? 'tp-active' : 'tp-paused'}}">
+          {{item.active ? '执行中' : '已暂停'}}
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{tradeRecords.length === 0 && tradePlans.length === 0}}" class="tp-empty">
+      暂无交易记录
     </view>
   </scroll-view>
 </view>

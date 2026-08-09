@@ -108,6 +108,10 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx;
 }
 .c-trade { background: rgba(212,168,83,0.15); color: var(--accent); border: 1px solid rgba(212,168,83,0.3); }
+.c-suggest { padding: 6rpx 16rpx; border-radius: 6rpx; font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx; }
+.c-suggest.red { background: var(--red-bg); color: var(--red); }
+.c-suggest.green { background: var(--green-bg); color: var(--green); }
+.c-suggest.blue { background: var(--blue-bg); color: var(--blue); }
 .c-type-tag { padding: 6rpx 16rpx; border-radius: 6rpx; font-size: 22rpx; font-weight: 700; }
 .c-type-pos { background: var(--red-bg); color: var(--red); }
 .c-type-watch { background: var(--blue-bg); color: var(--blue); }
@@ -276,3 +280,70 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 .bb-icon { font-size: 36rpx; }
 .bb-label { font-size: 30rpx; color: var(--text-dim); font-weight: 500; }
 .bb-active .bb-label { color: var(--accent); font-weight: 700; }
+
+/* ========== 定投按钮 ========== */
+.c-invest {
+  background: rgba(88, 166, 255, 0.15); color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+/* ========== 定投计划弹窗 ========== */
+.plan-list { margin-bottom: 24rpx; }
+.plan-item {
+  background: var(--bg-input);
+  border-radius: 14rpx; padding: 20rpx 24rpx;
+  margin-bottom: 12rpx;
+  border: 1px solid var(--border);
+}
+.plan-inactive { opacity: 0.45; }
+.plan-info { margin-bottom: 12rpx; }
+.plan-period { font-size: 26rpx; font-weight: 700; color: var(--text); }
+.plan-amount { font-size: 24rpx; color: var(--accent); margin-top: 4rpx; }
+.plan-last { font-size: 22rpx; color: var(--text-dim); margin-top: 2rpx; }
+.plan-actions { display: flex; gap: 12rpx; flex-wrap: wrap; }
+.plan-btn {
+  font-size: 22rpx; color: var(--text-secondary);
+  padding: 4rpx 14rpx; border-radius: 8rpx;
+  border: 1px solid var(--border);
+}
+.plan-btn-toggle { color: var(--accent); border-color: var(--accent); }
+.plan-btn-exec { color: var(--green); border-color: var(--green); }
+.plan-btn-del { color: var(--red); border-color: var(--red); }
+
+.plan-form { border-top: 1px solid var(--border); padding-top: 20rpx; }
+.plan-field { margin-bottom: 20rpx; }
+.plan-label { font-size: 24rpx; color: var(--text-dim); display: block; margin-bottom: 10rpx; }
+
+.plan-period-pick {
+  display: flex; gap: 12rpx; flex-wrap: wrap;
+}
+.pp-item {
+  padding: 12rpx 24rpx; border-radius: 22rpx; font-size: 24rpx;
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.pp-sel {
+  background: rgba(88, 166, 255, 0.15); border-color: #58a6ff;
+  color: #58a6ff; font-weight: 600;
+}
+
+.plan-day-pick {
+  display: flex; gap: 10rpx; flex-wrap: wrap;
+}
+.pd-item {
+  width: 64rpx; height: 64rpx; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24rpx; font-weight: 600;
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.pd-sel {
+  background: #58a6ff; color: #fff; border-color: #58a6ff;
+}
+
+.plan-day-scroll {
+  white-space: nowrap; padding: 4rpx 0;
+}
+.plan-day-scroll .pd-item {
+  display: inline-flex; margin-right: 10rpx;
+}

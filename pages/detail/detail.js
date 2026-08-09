@@ -29,7 +29,10 @@ Page({
     chartRange: '1M',  // 1M | 3M | 6M | 1Y
     benchmarkStatus: '',
     chartData: null,   // { dates, navs, benchmark, benchmarkDates }
-    chartCanvasReady: false
+    chartCanvasReady: false,
+    showTradePanel: false,
+    tradeRecords: [],
+    tradePlans: []
   },
   _timer: null,
   _fundIndex: -1,
@@ -331,7 +334,7 @@ Page({
         sectors: fund.holdings ? fund.holdings.sectors : [],
         stocks: fund.holdings ? fund.holdings.stocks : [],
         newsMap: fund.news || {},
-        suggest: fund.suggestion || null
+        suggest: fund.suggestion || null, suggestDaily: fund.suggestDaily || null
       });
       self.applySuggestion();
       if (!self.data.chartData) self.loadChart('1M');
@@ -381,10 +384,33 @@ Page({
     });
   },
 
-  runAnalyze: function(stocks, newsMap) {
-    var self = this;
-    self.setData({ loadingAnalysis: true });
-    app.analyzeNews(stocks, newsMap, self.data.name).then(function(result) {
+ runAnalyze: function(stocks, newsMap) {
+   var self = this;
+   self.setData({ loadingAnalysis: true });
+    var code = self._fundCode;
+    var nav = parseFloat(self.data.nav) || 0;
+    // 并行获取净值走势和持仓盈亏
+    var navPromise = app.fetchHistory(code, 132).then(function(histData) {
+      if (!histData || histData.length < 2) return null;
+      function pctChange(start, end) {
+        if (end >= histData.length) return null;
+        return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
+      }
+      var len = histData.length;
+      return {
+        '1m': pctChange(Math.max(0, len - 22), len - 1),
+        '3m': pctChange(Math.max(0, len - 66), len - 1),
+        '6m': pctChange(0, len - 1)
+      };
+    }).catch(function() { return null; });
+    var pl = app.calcProfitLoss(code, nav);
+    pl = app.applyPosOverrides(code, nav, pl);
+    var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
+    Promise.all([navPromise]).then(function(results) {
+      var navTrend = results[0];
+      var dailyPct = self.data.changePct != null ? parseFloat(self.data.changePct) : null;
+      return app.analyzeNews(stocks, newsMap, self.data.name, navTrend, position, dailyPct);
+    }).then(function(result) {
       if (!result) return;
       var labeled = result.labeled || {};
       var mergedMap = {};
@@ -412,10 +438,11 @@ Page({
         });
       });
       var suggest = result.suggest || { action: 'hold', reason: '暂无分析' };
-      self.setData({ newsMap: mergedMap, suggest: suggest, stats: result.stats || null, aiPowered: result.aiPowered || false, loadingAnalysis: false });
+      var suggestDaily = result.suggestDaily || null;
+      self.setData({ newsMap: mergedMap, suggest: suggest, suggestDaily: suggestDaily, stats: result.stats || null, aiPowered: result.aiPowered || false, loadingAnalysis: false });
       self.applySuggestion();
       var fund = app.globalData.funds[self._fundIndex];
-      if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund._holdingsLoaded = true; }
+      if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund.suggestDaily = suggestDaily; fund._holdingsLoaded = true; }
     }).catch(function(err) {
       self.setData({ loadingAnalysis: false });
     });
@@ -423,13 +450,21 @@ Page({
 
   applySuggestion: function() {
     var sug = this.data.suggest;
+    var sugDaily = this.data.suggestDaily;
     if (!sug) return;
     var suggestLabel = '';
     var suggestClass = 'blue';
     if (sug.action === 'buy') { suggestLabel = '加仓'; suggestClass = 'red'; }
     else if (sug.action === 'sell') { suggestLabel = '减仓'; suggestClass = 'green'; }
     else { suggestLabel = '观望'; suggestClass = 'blue'; }
-    this.setData({ suggestLabel: suggestLabel, suggestClass: suggestClass });
+    var suggestDailyLabel = '';
+    var suggestDailyClass = 'blue';
+    if (sugDaily) {
+      if (sugDaily.action === 'buy') { suggestDailyLabel = '加仓'; suggestDailyClass = 'red'; }
+      else if (sugDaily.action === 'sell') { suggestDailyLabel = '减仓'; suggestDailyClass = 'green'; }
+      else { suggestDailyLabel = '观望'; suggestDailyClass = 'blue'; }
+    }
+    this.setData({ suggestLabel: suggestLabel, suggestClass: suggestClass, suggestDailyLabel: suggestDailyLabel, suggestDailyClass: suggestDailyClass });
   },
 
   // ============ 自动刷新 ============
@@ -472,5 +507,90 @@ Page({
       var fund = app.globalData.funds[self._fundIndex];
       if (fund) { fund.nav = data.nav; fund.changePct = data.changePct; fund.date = data.date; }
     });
-  }
+  },
+
+  // ============ 交易记录 ============
+
+  openTradeRecords: function() {
+    var self = this;
+    var code = self._fundCode;
+
+    // 加载交易记录
+    var trades = app.loadTrades(code);
+    var today = new Date();
+    var todayStr = today.getFullYear() + '-' +
+      String(today.getMonth() + 1).padStart(2, '0') + '-' +
+      String(today.getDate()).padStart(2, '0');
+
+    var records = trades.map(function(t) {
+      return {
+        id: t.id,
+        date: t.date,
+        type: t.type,
+        shares: t.shares,
+        amount: t.amount,
+        nav: t.nav,
+        autoInvest: t.autoInvest || false,
+        canDelete: t.date === todayStr
+      };
+    });
+
+    // 加载定投计划
+    var plans = app.getFundPlans(code);
+    var periodLabels = { daily: '每日', weekly: '每周', biweekly: '每两周', monthly: '每月' };
+    var planData = plans.map(function(p) {
+      return {
+        id: p.id,
+        periodLabel: periodLabels[p.period] || p.period,
+        amount: p.amount,
+        active: p.active,
+        lastExecuted: p.lastExecuted || ''
+      };
+    });
+
+    self.setData({
+      showTradePanel: true,
+      tradeRecords: records,
+      tradePlans: planData
+    });
+  },
+
+  closeTradeRecords: function() {
+    this.setData({ showTradePanel: false });
+  },
+
+  deleteTradeRecord: function(e) {
+    var self = this;
+    var id = e.currentTarget.dataset.id;
+    var code = self._fundCode;
+    var trades = app.loadTrades(code);
+    var idx = -1;
+    for (var i = 0; i < trades.length; i++) {
+      if (trades[i].id === id) { idx = i; break; }
+    }
+    if (idx < 0) return;
+
+    var trade = trades[idx];
+    var today = new Date();
+    var todayStr = today.getFullYear() + '-' +
+      String(today.getMonth() + 1).padStart(2, '0') + '-' +
+      String(today.getDate()).padStart(2, '0');
+
+    if (trade.date !== todayStr) {
+      wx.showToast({ title: '仅可删除当天记录', icon: 'none' });
+      return;
+    }
+
+    wx.showModal({
+      title: '确认删除',
+      content: '确定删除这笔交易记录吗？',
+      success: function(res) {
+        if (res.confirm) {
+          app.deleteTrade(code, idx);
+          self.openTradeRecords();
+          wx.showToast({ title: '已删除', icon: 'success' });
+        }
+      }
+    });
+  },
 });

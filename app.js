@@ -357,6 +357,7 @@ App({
   calcPortfolio: function(funds) {
     var totalCost = 0;
     var totalMarket = 0;
+    var totalDailyProfit = 0;
     var list = [];
     for (var i = 0; i < funds.length; i++) {
       var f = funds[i];
@@ -369,12 +370,17 @@ App({
       if (pl.shares <= 0) continue;
       totalCost += pl.cost;
       totalMarket += pl.marketValue;
+      // 当日持仓收益：当日净值变动带来的持有收益变化
+      var dailyPct = parseFloat(f.changePct) || 0;
+      var dailyProfit = pl.marketValue * dailyPct / (100 + dailyPct);
+      pl.dailyProfit = dailyProfit;
+      totalDailyProfit += dailyProfit;
       list.push({ code: f.code, name: f.name, nav: nav, pl: pl });
     }
     var totalProfit = totalMarket - totalCost;
     var totalPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
     return { totalCost: totalCost, totalMarket: totalMarket, totalProfit: totalProfit,
-      totalPct: totalPct, items: list };
+      totalPct: totalPct, totalDailyProfit: totalDailyProfit, items: list };
   },
 
   // ============ API ============
@@ -526,12 +532,165 @@ App({
     });
   },
 
-  analyzeNews: function(stocks, newsMap, fundName) {
+ analyzeNews: function(stocks, newsMap, fundName) {
     var data = { stocks: stocks, newsMap: newsMap };
     if (fundName) data.fundName = fundName;
+    if (arguments.length > 3 && arguments[3]) data.navTrend = arguments[3];
+    if (arguments.length > 4 && arguments[4]) data.position = arguments[4];
+    if (arguments.length > 5 && arguments[5] != null) data.dailyChangePct = arguments[5];
     return wx.cloud.callFunction({
       name: 'analyze',
       data: data
     }).then(function(res) { return res.result; });
+  },
+
+  // ============ 定投计划 ============
+
+  loadPlans: function() {
+    try { return wx.getStorageSync('fund_plans') || []; } catch (e) { return []; }
+  },
+
+  savePlans: function(plans) {
+    wx.setStorageSync('fund_plans', plans);
+    this._touch('plans');
+  },
+
+  getFundPlans: function(fundCode) {
+    var all = this.loadPlans();
+    return all.filter(function(p) { return p.fundCode === fundCode; });
+  },
+
+  addPlan: function(plan) {
+    var all = this.loadPlans();
+    all.push(plan);
+    this.savePlans(all);
+    this._checkPlanExecution(plan);
+    return all;
+  },
+
+  updatePlan: function(planId, updates) {
+    var all = this.loadPlans();
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id === planId) {
+        Object.keys(updates).forEach(function(k) { all[i][k] = updates[k]; });
+        break;
+      }
+    }
+    this.savePlans(all);
+    return all;
+  },
+
+  deletePlan: function(planId) {
+    var all = this.loadPlans();
+    all = all.filter(function(p) { return p.id !== planId; });
+    this.savePlans(all);
+    return all;
+  },
+
+  _shouldExecuteToday: function(plan) {
+    if (plan._forceExec) { delete plan._forceExec; return true; }
+    if (!plan.active) return false;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (plan.createdAt) {
+      var parts = plan.createdAt.split('-');
+      var created = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      created.setHours(0, 0, 0, 0);
+      if (created.getTime() === today.getTime()) return false;
+    }
+    if (plan.lastExecuted) {
+      var leParts = plan.lastExecuted.split('-');
+      var leDate = new Date(parseInt(leParts[0]), parseInt(leParts[1]) - 1, parseInt(leParts[2]));
+      leDate.setHours(0, 0, 0, 0);
+      if (leDate.getTime() === today.getTime()) return false;
+    }
+    var dayOfWeek = today.getDay();
+    var dayOfMonth = today.getDate();
+    switch (plan.period) {
+      case 'daily': return true;
+      case 'weekly': return plan.dayOfWeek === dayOfWeek;
+      case 'biweekly': {
+        if (plan.dayOfWeek !== dayOfWeek) return false;
+        if (plan.lastExecuted) {
+          var leParts2 = plan.lastExecuted.split('-');
+          var leDate2 = new Date(parseInt(leParts2[0]), parseInt(leParts2[1]) - 1, parseInt(leParts2[2]));
+          leDate2.setHours(0, 0, 0, 0);
+          var diff = Math.floor((today.getTime() - leDate2.getTime()) / 86400000);
+          return diff >= 13;
+        }
+        return true;
+      }
+      case 'monthly': {
+        var lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        var target = Math.min(plan.dayOfMonth, lastDay);
+        return dayOfMonth === target;
+      }
+    }
+    return false;
+  },
+
+  _executePlan: function(plan) {
+    if (!this._shouldExecuteToday(plan)) return false;
+    var today = new Date();
+    var dateStr = today.getFullYear() + '-' +
+      String(today.getMonth() + 1).padStart(2, '0') + '-' +
+      String(today.getDate()).padStart(2, '0');
+    var nav = 1.0;
+    var funds = this.globalData.funds;
+    for (var i = 0; i < funds.length; i++) {
+      if (funds[i].code === plan.fundCode && funds[i].nav) {
+        nav = parseFloat(funds[i].nav) || 1.0;
+        break;
+      }
+    }
+    var shares = plan.amount / nav;
+    var trade = {
+      id: 'dt_' + Date.now(),
+      date: dateStr,
+      type: 'buy',
+      shares: parseFloat(shares.toFixed(2)),
+      amount: plan.amount,
+      nav: parseFloat(nav.toFixed(4)),
+      isBefore3pm: true,
+      autoInvest: true
+    };
+    this.addTrade(plan.fundCode, trade);
+    var all = this.loadPlans();
+    for (var j = 0; j < all.length; j++) {
+      if (all[j].id === plan.id) {
+        all[j].lastExecuted = dateStr;
+        break;
+      }
+    }
+    this.savePlans(all);
+    return true;
+  },
+
+  _checkPlanExecution: function(plan) {
+    var executed = this._executePlan(plan);
+    if (executed) {
+      var page = this._getCurrentPage();
+      if (page && page.applyFilter) page.applyFilter();
+      if (page && page.updatePortfolio) page.updatePortfolio();
+    }
+  },
+
+  _getCurrentPage: function() {
+    var pages = getCurrentPages();
+    return pages.length > 0 ? pages[pages.length - 1] : null;
+  },
+
+  executeAllPlans: function() {
+    var plans = this.loadPlans();
+    var changed = false;
+    for (var i = 0; i < plans.length; i++) {
+      if (this._executePlan(plans[i])) changed = true;
+    }
+    if (changed) {
+      var page = this._getCurrentPage();
+      if (page && page.applyFilter) page.applyFilter();
+      if (page && page.updatePortfolio) page.updatePortfolio();
+    }
+    return changed;
   }
 });

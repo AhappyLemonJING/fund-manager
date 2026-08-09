@@ -131,6 +131,9 @@ exports.main = async (event) => {
   var stocks = event.stocks || [];
   var newsMap = event.newsMap || {};
   var fundName = event.fundName || '';
+  var navTrend = event.navTrend || null;
+  var position = event.position || null;
+  var dailyChangePct = event.dailyChangePct != null ? event.dailyChangePct : null;
 
   // 先统计每只股票有多少新闻
   var totalNewsCount = 0;
@@ -151,10 +154,17 @@ exports.main = async (event) => {
   // 跑规则引擎（作为 AI 输入特征 + 降级备用）
   var rulesResult = runRulesEngine(stocks, newsMap);
 
-  // 尝试调用 DeepSeek AI 分析
+  // 尝试调用 DeepSeek AI 分析（标准版 + 融入当日涨跌幅版 并行）
   var aiResult = null;
+  var aiDailyResult = null;
   try {
-    aiResult = await callDeepSeek(stocks, newsMap, rulesResult, fundName);
+    var promises = [callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, null)];
+    if (dailyChangePct != null) {
+      promises.push(callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct));
+    }
+    var results = await Promise.all(promises);
+    aiResult = results[0];
+    if (results.length > 1) aiDailyResult = results[1];
   } catch (e) {
     console.error('DeepSeek API 调用失败，降级为规则引擎:', e.message || e);
   }
@@ -163,8 +173,12 @@ exports.main = async (event) => {
     aiResult.labeled = rulesResult.labeled;
     aiResult.stats = rulesResult.stats;
     aiResult.aiPowered = true;
+    if (aiDailyResult) {
+      aiResult.suggestDaily = aiDailyResult.suggest;
+    }
     return aiResult;
   }
+
 
   // 降级：使用规则引擎结果
   rulesResult.aiPowered = false;
@@ -369,62 +383,188 @@ function computeSuggestion(bull, bear, neu, total, stockScores) {
 
 // ============ DeepSeek AI 分析 ============
 
-function callDeepSeek(stocks, newsMap, rulesResult, fundName) {
+// ---- 辅助函数 ----
+function formatPct(val) {
+  if (val == null) return '--';
+  return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+}
+
+function computeDaysAgo(timeStr) {
+  if (!timeStr) return null;
+  try {
+    var m = timeStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (!m) return null;
+    var pubDate = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    var now = new Date();
+    var diffMs = now - pubDate;
+    var diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays < 0) return '今天';
+    if (diffDays === 0) return '今天';
+    if (diffDays === 1) return '1天前';
+    return diffDays + '天前';
+  } catch (e) { return null; }
+}
+
+function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct) {
   return new Promise(function(resolve, reject) {
     var apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
       return reject(new Error('DEEPSEEK_API_KEY 未配置或无效'));
     }
 
-    // 构建给 AI 的上下文
     var stats = rulesResult.stats;
-    var stockDetails = [];
+    var labels = rulesResult.labeled;
 
+    // ---- 1. 构建带时间信息的新闻列表 ----
+    var allNewsItems = [];
     stocks.forEach(function(s) {
       var newsList = newsMap[s.code] || [];
-      if (newsList.length === 0) return;
-      var labels = rulesResult.labeled[s.code] || [];
-      var newsSummary = [];
-      for (var i = 0; i < newsList.length; i++) {
-        var n = newsList[i];
-        var label = labels[i] || {};
-        var typeTag = label.type === 'bullish' ? '[利好]' :
-                     label.type === 'bearish' ? '[利空]' : '[中性]';
-        var extra = label.reason ? ' (' + label.reason + ')' : '';
-        newsSummary.push('  - ' + typeTag + ' ' + (n.title || '') + extra);
-      }
-      stockDetails.push(
-        '【' + (s.name || '') + '(' + s.code + ') 持仓权重 ' + (s.weight || 0) + '%】' +
-        '\n  利好/利空/中性: ' +
-        labels.filter(function(l) { return l.type === 'bullish'; }).length + '/' +
-        labels.filter(function(l) { return l.type === 'bearish'; }).length + '/' +
-        labels.filter(function(l) { return l.type === 'neutral'; }).length +
-        '\n' + newsSummary.join('\n')
-      );
+      var stockLabels = labels[s.code] || [];
+      newsList.forEach(function(n, i) {
+        var label = stockLabels[i] || {};
+        var daysAgo = computeDaysAgo(n.time);
+        allNewsItems.push({
+          stockCode: s.code,
+          stockName: s.name || '',
+          stockWeight: s.weight || 0,
+          title: n.title || n.text || '',
+          column: n.column || '',
+          type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
+          reason: label.reason || '',
+          timeStr: n.time || '',
+          daysAgo: daysAgo,
+          daysAgoNum: daysAgo ? parseInt(daysAgo) : 999
+        });
+      });
     });
 
+    // 按时间排序（最近在前）
+    allNewsItems.sort(function(a, b) {
+      var da = isNaN(a.daysAgoNum) ? 999 : a.daysAgoNum;
+      var db = isNaN(b.daysAgoNum) ? 999 : b.daysAgoNum;
+      return da - db;
+    });
+
+    // 时间分布统计
+    var recent3d = 0, recent7d = 0, older7d = 0;
+    allNewsItems.forEach(function(n) {
+      if (n.daysAgoNum <= 3) recent3d++;
+      else if (n.daysAgoNum <= 7) recent7d++;
+      else older7d++;
+    });
+
+    // ---- 2. 按股票分组，构建详情 ----
+    var stockDetails = [];
+    var stockMap = {};
+    stocks.forEach(function(s) {
+      stockMap[s.code] = {
+        name: s.name || '',
+        code: s.code,
+        weight: s.weight || 0,
+        news: [],
+        bullCount: 0, bearCount: 0, neuCount: 0
+      };
+    });
+
+    allNewsItems.forEach(function(n) {
+      var sm = stockMap[n.stockCode];
+      if (!sm) return;
+      var typeTag = n.type === 'bullish' ? '[利好]' : n.type === 'bearish' ? '[利空]' : '[中性]';
+      var extra = n.reason ? ' (' + n.reason + ')' : '';
+      var timeLabel = n.daysAgo ? n.daysAgo : '';
+      sm.news.push('  - ' + typeTag + ' ' + timeLabel + ' ' + n.title + extra);
+      if (n.type === 'bullish') sm.bullCount++;
+      else if (n.type === 'bearish') sm.bearCount++;
+      else sm.neuCount++;
+    });
+
+    // 按权重降序排列
+    stocks.forEach(function(s) {
+      var sm = stockMap[s.code];
+      if (!sm || sm.news.length === 0) return;
+      var weightLevel = sm.weight >= 8 ? '高' : sm.weight >= 3 ? '中' : '低';
+      stockDetails.push({
+        text: '【' + sm.name + '(' + sm.code + ') 持仓权重 ' + sm.weight + '% | 影响: ' + weightLevel + '】' +
+          '\n  利好/利空/中性: ' + sm.bullCount + '/' + sm.bearCount + '/' + sm.neuCount +
+          '\n' + sm.news.join('\n'),
+        weight: sm.weight,
+        bullCount: sm.bullCount,
+        bearCount: sm.bearCount
+      });
+    });
+    stockDetails.sort(function(a, b) { return b.weight - a.weight; });
+
+    // ---- 3. 高权重股摘要 ----
+    var highWeightStocks = stockDetails.filter(function(s) { return s.weight >= 5; });
+    var highWeightSection = '';
+    if (highWeightStocks.length > 0) {
+      highWeightSection = '【重点关注 — 高权重重仓股】\n';
+      highWeightSection += '以下股票持仓权重\\u22655%，对基金净值影响最大：\n';
+      highWeightStocks.forEach(function(s) {
+        var signal = s.bullCount > s.bearCount ? '\\u2197 偏多' : s.bearCount > s.bullCount ? '\\u2198 偏空' : '\\u2194 中性';
+        highWeightSection += '  ' + signal + '\n';
+      });
+      highWeightSection += '\n';
+    }
+
+    // ---- 4. 组装 prompt ----
     var rulesSuggestion = rulesResult.suggest;
     var fundLabel = fundName ? '【基金名称】' + fundName + '\n' : '';
 
-    var prompt = '你是一位专业的基金分析助手，根据基金重仓股的相关新闻，给出投资建议。\n\n' +
+    var navSection = '';
+    if (navTrend) {
+      navSection = '【近期净值表现】\n' +
+        (navTrend['1m'] != null ? '近1月: ' + formatPct(navTrend['1m']) + '  ' : '') +
+        (navTrend['3m'] != null ? '近3月: ' + formatPct(navTrend['3m']) + '  ' : '') +
+        (navTrend['6m'] != null ? '近6月: ' + formatPct(navTrend['6m']) + '\n' : '\n') +
+        '\n';
+    }
+
+    var posSection = '';
+    if (position) {
+      posSection = '【持仓状态】\n' +
+        '持有天数: ' + (position.holdingDays || 0) + '天 | 持仓盈亏: ' + formatPct(position.profitPct) + '\n\n';
+    }
+
+    var dailySection = '';
+    if (dailyChangePct != null) {
+      var direction = dailyChangePct >= 0 ? '上涨' : '下跌';
+      var magnitude = Math.abs(dailyChangePct) >= 2 ? '大幅' : Math.abs(dailyChangePct) >= 1 ? '' : '小幅';
+      dailySection = '【当日涨跌幅】' + magnitude + direction + formatPct(dailyChangePct) + '\n\n';
+    }
+
+    var timeDistSection = '【新闻时效分布】\n' +
+      '近3天内: ' + recent3d + '条 | 3-7天: ' + recent7d + '条 | 7天以上: ' + older7d + '条\n\n';
+
+    var prompt =
+      '你是一位专业的基金分析助手。请根据以下信息，对基金的投资操作给出建议。\n\n' +
       fundLabel +
-      '【新闻总览】利好' + stats.bullish + '条 / 利空' + stats.bearish + '条 / 中性' + stats.neutral + '条\n\n' +
-      '【各重仓股详情】\n' + stockDetails.join('\n\n') + '\n\n' +
-      '【规则引擎初步判断】' + rulesSuggestion.action + ' (' + rulesSuggestion.reason + ')\n\n' +
-      '请综合以上信息，输出一个 JSON 格式的分析结果，只包含 action 和 reason 两个字段。\n' +
-      'action 取值：buy（加仓）、sell（减仓）、hold（观望）。\n' +
-      'reason 是中文撰写的具体分析建议，80-120字，说明判断依据，结合个股信号。\n' +
-      '格式示例：{"action":"hold","reason":"..."}\n' +
-      '不要使用 markdown 代码块，直接输出纯 JSON。';
+      navSection +
+      posSection + dailySection +
+      '【新闻总览】共 ' + stats.totalNews + ' 条 | 利好' + stats.bullish + ' / 利空' + stats.bearish + ' / 中性' + stats.neutral + '\n' +
+      timeDistSection +
+      highWeightSection +
+      '【全部重仓股新闻】（按权重降序，时间倒序）\n' +
+      stockDetails.map(function(s) { return s.text; }).join('\n\n') + '\n\n' +
+      '【规则引擎参考】' + rulesSuggestion.action + ' (' + rulesSuggestion.reason + ')\n' +
+      '（注意：以上为规则引擎的初步判断，仅供参考。请基于你的专业判断独立分析，不要盲从规则引擎的结论。）\n\n' +
+      '请按以下框架综合分析：\n' +
+      '1. 净值趋势与新闻信号的一致性：同向则强化结论，背离则需要重点权衡\n' +
+      '2. 持仓盈亏的决策影响：浮盈时可更积极地考虑减仓，浮亏时加仓需更谨慎\n' +
+      '3. 高权重持仓股的信号影响力远大于低权重股\n' +
+      '4. 近3天内的新闻参考价值显著高于7天以上的旧闻' + (dailyChangePct != null ? '\n' +
+      '5. 当日涨跌幅的短期信号：如果当日大幅下跌且中期趋势向好或利好密集→可能是短期错杀，考虑加仓；如果当日大幅上涨但趋势偏弱或利空密集→可能是情绪过热，考虑减仓；小幅波动应以中期趋势为主' : '') + '\n\n' +
+      '最终输出纯 JSON 格式，不要使用 markdown 代码块：\n' +
+      '{"action":"buy|sell|hold","reason":"120-180字分析理由，涵盖以上维度的判断依据"}';
 
     var postData = JSON.stringify({
       model: 'deepseek-chat',
       messages: [
-        { role: 'system', content: '你是专业的基金投资分析助手，只输出 JSON，不输出任何额外文字。' },
+        { role: 'system', content: '你是专业的基金投资分析助手。输出纯 JSON，不输出任何额外文字。action 取值: buy(加仓)/sell(减仓)/hold(观望)。' },
         { role: 'user', content: prompt }
       ],
       temperature: 0.3,
-      max_tokens: 600,
+      max_tokens: 800,
       stream: false
     });
 
@@ -451,7 +591,6 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName) {
         try {
           var resp = JSON.parse(body);
 
-          // 检查 HTTP 错误
           if (res.statusCode !== 200) {
             var errMsg = resp.error && resp.error.message ?
               resp.error.message : ('HTTP ' + res.statusCode);
@@ -462,7 +601,6 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName) {
           var content = resp.choices && resp.choices[0] && resp.choices[0].message.content;
           if (!content) return reject(new Error('DeepSeek 返回内容为空'));
 
-          // 尝试提取 JSON（可能被 markdown 代码块包裹）
           var jsonStr = content.trim();
           var jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
           if (jsonMatch) jsonStr = jsonMatch[1].trim();

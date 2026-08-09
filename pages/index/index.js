@@ -66,7 +66,18 @@ Page({
     // 持仓手动覆盖编辑
     editMarketValue: '',
     editProfit: '',
-    editHoldingDays: ''
+    editHoldingDays: '',
+    // 定投计划弹窗
+    showPlanModal: false,
+    planFundCode: "",
+    planFundName: "",
+    planFundNav: 0,
+    fundPlans: [],
+    planEditId: "",
+    planAmount: "",
+    planPeriod: "weekly",
+    planDayOfWeek: 1,
+    planDayOfMonth: 1,
   },
 
   noop: function() {},
@@ -94,11 +105,13 @@ Page({
     // 仅在首次打开时完成同步，切换 tab / 切换页面不再重复同步
     if (!app.globalData._synced) this.autoSync();
     else this.setData({ lastSyncTime: app.globalData._lastSyncTime || '' });
-    if (app.globalData.funds.length > 0) {
-      this.setData({ funds: app.globalData.funds });
-      this.applyFilter();
-      this.updatePortfolio();
-    }
+   if (app.globalData.funds.length > 0) {
+     this.setData({ funds: app.globalData.funds });
+     this.applyFilter();
+     this.updatePortfolio();
+      this.analyzeAllFunds();
+   }
+    app.executeAllPlans();
   },
 
   onHide: function() {
@@ -175,6 +188,7 @@ Page({
     var id = e.currentTarget.dataset.id;
     this.setData({ activeGroup: id });
     this.applyFilter();
+    this.updatePortfolio();
   },
 
     goMarket: function() {
@@ -238,6 +252,12 @@ Page({
     result.forEach(function(f) {
       f._groupName = groupName(f.code);
       f._type = app.getFundType(f.code);
+      var sug = f.suggestDaily || f.suggestion;
+      if (sug) {
+        if (sug.action === 'buy') { f._suggestLabel = '加仓'; f._suggestClass = 'red'; }
+        else if (sug.action === 'sell') { f._suggestLabel = '减仓'; f._suggestClass = 'green'; }
+        else { f._suggestLabel = '观望'; f._suggestClass = 'blue'; }
+      }
     });
     this.setData({ displayFunds: result });
   },
@@ -245,12 +265,25 @@ Page({
   // ============ 持仓总览 ============
 
   updatePortfolio: function() {
-    var pf = app.calcPortfolio(app.globalData.funds);
+    // 按当前分组筛选基金
+    var activeGroup = this.data.activeGroup;
+    var map = app.globalData.groupMap;
+    var filteredFunds = app.globalData.funds;
+    if (activeGroup !== 'all') {
+      if (activeGroup === 'ungrouped') {
+        filteredFunds = filteredFunds.filter(function(f) { return !map[f.code]; });
+      } else {
+        filteredFunds = filteredFunds.filter(function(f) { return map[f.code] === activeGroup; });
+      }
+    }
+    var pf = app.calcPortfolio(filteredFunds);
     pf.totalMarketStr = pf.totalMarket.toFixed(2);
     pf.totalCostStr = pf.totalCost.toFixed(2);
-    var profitSign = pf.totalProfit >= 0 ? '+' : '';
-    pf.totalProfitStr = profitSign + pf.totalProfit.toFixed(2);
-    pf.totalPctStr = profitSign + pf.totalPct.toFixed(2);
+    var dailySign = pf.totalDailyProfit >= 0 ? '+' : '';
+    pf.totalDailyProfitStr = dailySign + pf.totalDailyProfit.toFixed(2);
+    var dailyDenom = pf.totalMarket - pf.totalDailyProfit;
+    var dailyPct = dailyDenom > 0 ? (pf.totalDailyProfit / dailyDenom) * 100 : 0;
+    pf.totalDailyPctStr = (dailyPct >= 0 ? '+' : '') + dailyPct.toFixed(2);
     for (var i = 0; i < pf.items.length; i++) {
       var pi = pf.items[i].pl;
       pi.avgCostStr = pi.avgCost.toFixed(3);
@@ -262,9 +295,80 @@ Page({
         pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
       }
     }
-    this.setData({ portfolio: pf });
+   this.setData({ portfolio: pf });
+ },
+ // ============ 基金加载 ============
+
+  // ============ AI 分析 ============
+
+ analyzeFundIfNeeded: function(fund) {
+   var self = this;
+   if (fund._holdingsLoaded) return Promise.resolve();
+   var code = fund.code;
+    var nav = parseFloat(fund.nav) || 0;
+   return app.fetchHoldings(code).then(function(data) {
+     var stocks = (data && data.stocks) || [];
+     fund.holdings = { sectors: (data && data.sectors) || [], stocks: stocks };
+     if (stocks.length === 0) {
+       fund._holdingsLoaded = true;
+       return null;
+     }
+      // 并行获取净值走势
+      var navPromise = app.fetchHistory(code, 132).then(function(histData) {
+        if (!histData || histData.length < 2) return null;
+        function pctChange(start, end) {
+          if (end >= histData.length) return null;
+          return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
+        }
+        var len = histData.length;
+        return {
+          '1m': pctChange(Math.max(0, len - 22), len - 1),
+          '3m': pctChange(Math.max(0, len - 66), len - 1),
+          '6m': pctChange(0, len - 1)
+        };
+      }).catch(function() { return null; });
+      return Promise.all(stocks.map(function(s) {
+        return app.fetchStockNews(s.code, s.name).then(function(news) {
+          return { code: s.code, news: news };
+        }).catch(function() { return { code: s.code, news: [] }; });
+      }).concat([navPromise])).then(function(results) {
+        var newsMap = {};
+        var navTrend = null;
+        results.forEach(function(r) {
+          if (r && r.code) newsMap[r.code] = r.news;
+          else if (r && typeof r['1m'] !== 'undefined') navTrend = r;
+        });
+        fund.news = newsMap;
+        var pl = app.calcProfitLoss(code, nav);
+        pl = app.applyPosOverrides(code, nav, pl);
+        var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
+        var dailyPct = parseFloat(fund.changePct) || null;
+        return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position, dailyPct);
+      });
+    }).then(function(result) {
+      if (result) { fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' }; fund.suggestDaily = result.suggestDaily || null; }
+      fund._holdingsLoaded = true;
+      self.applyFilter();
+      self.updatePortfolio();
+    }).catch(function() {
+      fund._holdingsLoaded = true;
+      self.applyFilter();
+      self.updatePortfolio();
+    });
   },
-  // ============ 基金加载 ============
+
+  analyzeAllFunds: function() {
+    var self = this;
+    var funds = app.globalData.funds;
+    var positionFunds = funds.filter(function(f) {
+      return app.getFundType(f.code) === 'position';
+    });
+    var chain = Promise.resolve();
+    positionFunds.forEach(function(f) {
+      chain = chain.then(function() { return self.analyzeFundIfNeeded(f); });
+    });
+    return chain;
+  },
 
   loadFunds: function(codes) {
     var self = this;
@@ -277,10 +381,11 @@ Page({
 
     var tasks = funds.map(function(f) { return self.fetchOne(f); });
     Promise.all(tasks).then(function() {
-      self.setData({ funds: app.globalData.funds, loading: false });
-      self.applyFilter();
-      self.updatePortfolio();
-    }).catch(function() { self.setData({ loading: false }); });
+     self.setData({ funds: app.globalData.funds, loading: false });
+     self.applyFilter();
+     self.updatePortfolio();
+      self.analyzeAllFunds();
+   }).catch(function() { self.setData({ loading: false }); });
   },
 
   fetchOne: function(fund) {
@@ -345,9 +450,10 @@ Page({
       self.setData({ funds: app.globalData.funds, showAddModal: false, adding: false, inputCode: '' });
       // 切换到对应类型的 tab
       self.setData({ activeTab: type, activeGroup: 'all' });
-      self.applyFilter();
-      self.updatePortfolio();
-      wx.showToast({ title: '添加成功', icon: 'success' });
+     self.applyFilter();
+     self.updatePortfolio();
+      self.analyzeAllFunds();
+     wx.showToast({ title: '添加成功', icon: 'success' });
     }).catch(function() {
       self.setData({ adding: false });
       wx.showToast({ title: '添加失败', icon: 'none' });
@@ -742,5 +848,221 @@ Page({
     }).catch(function() {
       self.setData({ syncing: false });
     });
+  },
+
+  // ============ 定投计划弹窗 ============
+
+  showPlan: function(e) {
+    var idx = e.currentTarget.dataset.index;
+    var fund = this.data.displayFunds[idx];
+    if (!fund) return;
+    var nav = parseFloat(fund.nav) || 0;
+    var plans = app.getFundPlans(fund.code);
+    // 格式化展示
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      if (p.lastExecuted) {
+        p._lastLabel = '上次执行: ' + p.lastExecuted;
+      } else {
+        p._lastLabel = '尚未执行';
+      }
+    }
+    this.setData({
+      showPlanModal: true,
+      planFundCode: fund.code,
+      planFundName: fund.name,
+      planFundNav: nav,
+      fundPlans: plans,
+      planEditId: '',
+      planAmount: '',
+      planPeriod: 'weekly',
+      planDayOfWeek: 1,
+      planDayOfMonth: 1
+    });
+  },
+
+  hidePlan: function() { this.setData({ showPlanModal: false }); },
+
+  _getPeriodLabel: function(plan) {
+    var weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    switch (plan.period) {
+      case 'daily': return '每日';
+      case 'weekly': return '每周 ' + weekNames[plan.dayOfWeek];
+      case 'biweekly': return '每两周 ' + weekNames[plan.dayOfWeek];
+      case 'monthly': return '每月 ' + plan.dayOfMonth + ' 日';
+    }
+    return '';
+  },
+
+  onPlanAmount: function(e) { this.setData({ planAmount: e.detail.value }); },
+  onPlanPeriod: function(e) {
+    var id = e.currentTarget.dataset.id;
+    this.setData({ planPeriod: id });
+  },
+  onPlanDayOfWeek: function(e) {
+    var day = parseInt(e.currentTarget.dataset.id);
+    this.setData({ planDayOfWeek: day });
+  },
+  onPlanDayOfMonth: function(e) {
+    var day = parseInt(e.currentTarget.dataset.id);
+    this.setData({ planDayOfMonth: day });
+  },
+
+  addPlan: function() {
+    var amount = parseFloat(this.data.planAmount) || 0;
+    var period = this.data.planPeriod;
+    var code = this.data.planFundCode;
+
+    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
+
+    var now = new Date();
+    var createdAt = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
+
+    var plan = {
+      id: 'p_' + Date.now(),
+      fundCode: code,
+      fundName: this.data.planFundName,
+      amount: amount,
+      period: period,
+      dayOfWeek: this.data.planDayOfWeek,
+      dayOfMonth: this.data.planDayOfMonth,
+      createdAt: createdAt,
+      lastExecuted: null,
+      active: true
+    };
+
+    app.addPlan(plan);
+    // 刷新计划列表
+    var plans = app.getFundPlans(code);
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({
+      fundPlans: plans,
+      planAmount: ''
+    });
+    wx.showToast({ title: '定投计划已创建', icon: 'success', duration: 1000 });
+  },
+
+  editPlan: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var plans = this.data.fundPlans;
+    var plan = null;
+    for (var i = 0; i < plans.length; i++) {
+      if (plans[i].id === id) { plan = plans[i]; break; }
+    }
+    if (!plan) return;
+    this.setData({
+      planEditId: id,
+      planAmount: String(plan.amount),
+      planPeriod: plan.period,
+      planDayOfWeek: plan.dayOfWeek,
+      planDayOfMonth: plan.dayOfMonth
+    });
+  },
+
+  cancelEdit: function() {
+    this.setData({
+      planEditId: '',
+      planAmount: '',
+      planPeriod: 'weekly',
+      planDayOfWeek: 1,
+      planDayOfMonth: 1
+    });
+  },
+
+  updatePlan: function() {
+    var amount = parseFloat(this.data.planAmount) || 0;
+    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
+    app.updatePlan(this.data.planEditId, {
+      amount: amount,
+      period: this.data.planPeriod,
+      dayOfWeek: this.data.planDayOfWeek,
+      dayOfMonth: this.data.planDayOfMonth
+    });
+    var plans = app.getFundPlans(this.data.planFundCode);
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({
+      fundPlans: plans,
+      planEditId: '',
+      planAmount: ''
+    });
+    wx.showToast({ title: '计划已更新', icon: 'success', duration: 1000 });
+  },
+
+  deletePlan: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var self = this;
+    wx.showModal({
+      title: '删除定投计划',
+      content: '确定要删除该定投计划吗？',
+      success: function(res) {
+        if (res.confirm) {
+          app.deletePlan(id);
+          var plans = app.getFundPlans(self.data.planFundCode);
+          for (var i = 0; i < plans.length; i++) {
+            var p = plans[i];
+            p._periodLabel = self._getPeriodLabel(p);
+            p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+          }
+          self.setData({ fundPlans: plans });
+          wx.showToast({ title: '已删除', icon: 'none', duration: 1000 });
+        }
+      }
+    });
+  },
+
+  togglePlanActive: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var plans = this.data.fundPlans;
+    var active = true;
+    for (var i = 0; i < plans.length; i++) {
+      if (plans[i].id === id) {
+        active = !plans[i].active;
+        break;
+      }
+    }
+    app.updatePlan(id, { active: active });
+    var updated = app.getFundPlans(this.data.planFundCode);
+    for (var j = 0; j < updated.length; j++) {
+      var p = updated[j];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({ fundPlans: updated });
+  },
+
+  executePlanNow: function(e) {
+    var id = e.currentTarget.dataset.id;
+    var all = app.loadPlans();
+    var plan = null;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id === id) { plan = all[i]; break; }
+    }
+    if (!plan) return;
+    // 临时覆盖：强制今天执行
+    plan._forceExec = true;
+    var executed = app._executePlan(plan);
+    if (executed) {
+      this.applyFilter();
+      this.updatePortfolio();
+    }
+    var plans = app.getFundPlans(this.data.planFundCode);
+    for (var j = 0; j < plans.length; j++) {
+      var p = plans[j];
+      p._periodLabel = this._getPeriodLabel(p);
+      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
+    }
+    this.setData({ fundPlans: plans });
+    wx.showToast({ title: executed ? '已执行定投' : '今日已执行过', icon: executed ? 'success' : 'none', duration: 1000 });
   },
 });
