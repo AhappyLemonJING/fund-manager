@@ -4,28 +4,6 @@
   <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步 - 点击同步')}}</text>
 </view>
 
-<!-- 持仓概况 (仅持仓tab显示) -->
-<view wx:if="{{activeTab === 'position' && portfolio.items.length > 0}}" class="pf-summary">
-  <view class="pf-row">
-    <view class="pf-item">
-      <text class="pf-label">总资产</text>
-      <text class="pf-val pf-val-main">{{portfolio.totalMarketStr}}</text>
-    </view>
-    <view class="pf-divider"></view>
-    <view class="pf-item">
-      <text class="pf-label">总成本</text>
-      <text class="pf-val pf-val-cost">{{portfolio.totalCostStr}}</text>
-    </view>
-    <view class="pf-divider"></view>
-    <view class="pf-item">
-      <text class="pf-label">当日持仓收益</text>
-      <view class="pf-profit-line">
-        <text class="pf-val {{portfolio.totalDailyProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalDailyProfitStr}}</text>
-        <text class="pf-pct {{portfolio.totalDailyProfit >= 0 ? 'red' : 'green'}}">{{portfolio.totalDailyPctStr}}%</text>
-      </view>
-    </view>
-  </view>
-</view>
 
 <!-- 主 Tab 栏：持仓 / 自选 -->
 <view class="main-tabs">
@@ -76,30 +54,7 @@
           </text>
         </view>
       </view>
-      <!-- 持仓盈亏行 (仅持仓tab) -->
-      <view wx:if="{{activeTab === 'position' && portfolio}}" class="card-pl">
-        <block wx:for="{{portfolio.items}}" wx:key="code" wx:for-item="pi">
-          <view wx:if="{{pi.code === item.code && pi.pl.override}}" class="pl-row">
-            <text class="pl-cost">持仓 {{pi.pl.marketValueStr}}元 · {{pi.pl.holdingDaysStr}}</text>
-            <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
-              {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
-            </text>
-          </view>
-          <view wx:elif="{{pi.code === item.code}}" class="pl-row">
-            <text class="pl-cost">成本 {{pi.pl.avgCostStr}} · {{pi.pl.sharesStr}}份{{pi.pl.holdingDays > 0 ? ' · 持有' + pi.pl.holdingDays + '天' : ''}}</text>
-            <text class="pl-profit {{pi.pl.profit >= 0 ? 'red' : 'green'}}">
-              {{pi.pl.profitStr}}({{pi.pl.profitPctStr}}%)
-            </text>
-          </view>
-        </block>
-      </view>
       <view class="card-bottom">
-       <view wx:if="{{activeTab === 'position'}}" class="c-action c-trade" catchtap="showTrade" data-index="{{index}}">
-         <text>交易</text>
-       </view>
-       <view wx:if="{{activeTab === 'position'}}" class="c-action c-invest" catchtap="showPlan" data-index="{{index}}">
-         <text>定投</text>
-       </view>
        <view wx:if="{{activeTab === 'position' && item._suggestLabel}}" class="c-suggest {{item._suggestClass}}">{{item._suggestLabel}}</view>
         <view wx:if="{{activeTab !== 'position'}}" class="c-type-tag {{item._type === 'position' ? 'c-type-pos' : 'c-type-watch'}}" catchtap="showSwitchType" data-index="{{index}}">
           {{item._type === 'position' ? '持仓' : '自选'}}
@@ -146,86 +101,6 @@
   </view>
 </view>
 
-<!-- 交易记录弹窗 -->
-<view wx:if="{{showTradeModal}}" class="modal-mask" bindtap="hideTrade">
-  <view class="modal" catch:tap="noop" style="width:640rpx;max-height:85vh;overflow-y:auto;">
-    <view class="modal-title">{{tradeFundName}}交易记录</view>
-    <!-- 当前盈亏 -->
-    <view wx:if="{{tradePl.shares > 0}}" class="trade-pl-summary">
-      <view class="tps-row">
-        <text class="tps-label">持仓份额</text><text class="tps-val">{{tradePl.sharesStr}}份</text>
-      </view>
-      <view class="tps-row">
-        <text class="tps-label">成本均价</text><text class="tps-val">{{tradePl.avgCostStr}}</text>
-      </view>
-      <view class="tps-row">
-        <text class="tps-label">持仓市值</text><text class="tps-val">{{tradePl.marketValueStr}}</text>
-      </view>
-      <view class="tps-row tps-profit {{tradePl.profit >= 0 ? 'red' : 'green'}}">
-        <text class="tps-label">浮动盈亏</text>
-<text class="tps-val">{{tradePl.profitStr}} ({{tradePl.profitPctStr}}%)</text>
-      </view>
-    </view>
-    <view wx:elif="{{tradeFundNav}}" style="text-align:center;padding:20rpx;color:var(--text-dim);font-size:24rpx;">
-      暂无交易记录，当前净值 {{tradeFundNav}}
-    </view>
-    <!-- 手动覆盖编辑 -->
-    <view class="trade-pos-edit">
-      <view class="sec-title-sm">持仓覆盖编辑</view>
-      <view class="tpe-row">
-        <text class="tpe-label">持仓金额(元)</text>
-        <input class="modal-input tpe-input" placeholder="{{tradePl.marketValueStr}}" placeholder-style="color:#6e7681" value="{{editMarketValue}}" bindinput="onEditMarketValue" type="digit"/>
-      </view>
-      <view class="tpe-row">
-        <text class="tpe-label">持有收益(元)</text>
-        <input class="modal-input tpe-input" placeholder="{{tradePl.profitStr}}" placeholder-style="color:#6e7681" value="{{editProfit}}" bindinput="onEditProfit" type="digit"/>
-      </view>
-      <view class="tpe-row">
-        <text class="tpe-label">持有天数</text>
-        <input class="modal-input tpe-input" placeholder="例如: 30" placeholder-style="color:#6e7681" value="{{editHoldingDays}}" bindinput="onEditHoldingDays" type="number"/>
-      </view>
-      <view class="tpe-btns">
-        <view class="btn btn-sm btn-cancel" bindtap="clearPosOverride">清除</view>
-        <view class="btn btn-sm btn-ok" bindtap="savePosOverride">保存</view>
-      </view>
-    </view>
-    <!-- 历史交易 -->
-    <view wx:if="{{tradeRecords.length > 0}}" class="trade-hist">
-      <view class="sec-title-sm">历史记录</view>
-      <view wx:for="{{tradeRecords}}" wx:key="id" class="tr-item">
-        <view class="tr-left">
-          <text class="tr-type {{item.type === 'buy' ? 'red' : 'green'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
-          <text class="tr-date">{{item.date}}</text>
-        </view>
-        <view class="tr-right">
-          <text class="tr-detail">{{item.shares}}份 / {{item.amountStr}}元</text>
-          <text class="tr-del" bindtap="deleteTrade" data-index="{{index}}">✕</text>
-        </view>
-      </view>
-    </view>
-    <!-- 新增交易 -->
-    <view class="trade-form">
-      <view class="sec-title-sm">新增记录</view>
-      <view style="display:flex;gap:16rpx;margin-bottom:16rpx;">
-        <view class="type-pick {{tradeType === 'buy' ? 'type-pick-sel' : ''}}" bindtap="onTradeType" data-id="buy" style="flex:1;text-align:center;">买入</view>
-        <view class="type-pick {{tradeType === 'sell' ? 'type-pick-sel' : ''}}" bindtap="onTradeType" data-id="sell" style="flex:1;text-align:center;">卖出</view>
-      </view>
-      <input class="modal-input" style="margin-bottom:12rpx;" placeholder="份额" placeholder-style="color:#6e7681" value="{{tradeShares}}" bindinput="onTradeShares" type="digit"/>
-      <input class="modal-input" style="margin-bottom:12rpx;" placeholder="金额 (元)" placeholder-style="color:#6e7681" value="{{tradeAmount}}" bindinput="onTradeAmount" type="digit"/>
-      <picker mode="date" value="{{tradeDate}}" bindchange="onTradeDateChange">
-        <view class="picker-display">{{tradeDate || '选择日期'}}</view>
-      </picker>
-      <view class="trade-time-row">
-        <view class="type-pick {{tradeIsBefore3pm ? 'type-pick-sel' : ''}}" bindtap="onTradeTime" data-id="before" style="flex:1;text-align:center;font-size:24rpx;">下午三点前</view>
-        <view class="type-pick {{!tradeIsBefore3pm ? 'type-pick-sel' : ''}}" bindtap="onTradeTime" data-id="after" style="flex:1;text-align:center;font-size:24rpx;">下午三点后</view>
-      </view>
-      <view class="modal-btns">
-        <view class="btn btn-cancel" bindtap="hideTrade">关闭</view>
-        <view class="btn btn-ok" bindtap="addTrade">记录</view>
-      </view>
-    </view>
-  </view>
-</view>
 
 <!-- 切换类型弹窗 -->
 <view wx:if="{{showSwitchTypeModal}}" class="modal-mask" bindtap="hideSwitchType">
@@ -328,74 +203,6 @@
   </view>
 </view>
 
-<!-- 定投计划弹窗 -->
-<view wx:if="{{showPlanModal}}" class="modal-mask" bindtap="hidePlan">
-  <view class="modal" catch:tap="noop" style="width:640rpx;max-height:85vh;overflow-y:auto;">
-    <view class="modal-title">{{planFundName}} 定投计划</view>
-
-    <!-- 已有计划列表 -->
-    <view wx:if="{{fundPlans.length > 0}}" class="plan-list">
-      <view wx:for="{{fundPlans}}" wx:key="id" class="plan-item {{item.active ? '' : 'plan-inactive'}}">
-        <view class="plan-info">
-          <view class="plan-period">{{item._periodLabel}}</view>
-          <view class="plan-amount">每期 {{item.amount}} 元</view>
-          <view class="plan-last">{{item._lastLabel}}</view>
-        </view>
-        <view class="plan-actions">
-          <text class="plan-btn plan-btn-toggle" bindtap="togglePlanActive" data-id="{{item.id}}">{{item.active ? '停用' : '启用'}}</text>
-          <text class="plan-btn plan-btn-exec" bindtap="executePlanNow" data-id="{{item.id}}">执行</text>
-          <text class="plan-btn" bindtap="editPlan" data-id="{{item.id}}">编辑</text>
-          <text class="plan-btn plan-btn-del" bindtap="deletePlan" data-id="{{item.id}}">删除</text>
-        </view>
-      </view>
-    </view>
-
-    <!-- 新增/编辑表单 -->
-    <view class="plan-form">
-      <view class="sec-title-sm">{{planEditId ? '编辑计划' : '新增计划'}}</view>
-      <!-- 金额 -->
-      <view class="plan-field">
-        <text class="plan-label">每期金额(元)</text>
-        <input class="modal-input" type="digit" placeholder="例如: 1000" placeholder-style="color:#6e7681" value="{{planAmount}}" bindinput="onPlanAmount"/>
-      </view>
-      <!-- 周期选择 -->
-      <view class="plan-field">
-        <text class="plan-label">定投周期</text>
-        <view class="plan-period-pick">
-          <view class="pp-item {{planPeriod === 'daily' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="daily">每日</view>
-          <view class="pp-item {{planPeriod === 'weekly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="weekly">每周</view>
-          <view class="pp-item {{planPeriod === 'biweekly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="biweekly">每两周</view>
-          <view class="pp-item {{planPeriod === 'monthly' ? 'pp-sel' : ''}}" bindtap="onPlanPeriod" data-id="monthly">每月</view>
-        </view>
-      </view>
-      <!-- 周几选择 (每周/每两周) -->
-      <view wx:if="{{planPeriod === 'weekly' || planPeriod === 'biweekly'}}" class="plan-field">
-        <text class="plan-label">选择周几</text>
-        <view class="plan-day-pick">
-          <view wx:for="{{[0,1,2,3,4,5,6]}}" wx:key="*this" class="pd-item {{planDayOfWeek === item ? 'pd-sel' : ''}}" bindtap="onPlanDayOfWeek" data-id="{{item}}">
-            {{item === 0 ? '日' : (item === 1 ? '一' : (item === 2 ? '二' : (item === 3 ? '三' : (item === 4 ? '四' : (item === 5 ? '五' : '六')))))}}
-          </view>
-        </view>
-      </view>
-      <!-- 每月几号选择 -->
-      <view wx:if="{{planPeriod === 'monthly'}}" class="plan-field">
-        <text class="plan-label">选择日期</text>
-        <scroll-view class="plan-day-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
-          <view wx:for="{{28}}" wx:key="*this" class="pd-item {{planDayOfMonth === item + 1 ? 'pd-sel' : ''}}" bindtap="onPlanDayOfMonth" data-id="{{item + 1}}">
-            {{item + 1}}
-          </view>
-        </scroll-view>
-      </view>
-      <!-- 按钮 -->
-      <view class="modal-btns">
-        <view wx:if="{{planEditId}}" class="btn btn-cancel" bindtap="cancelEdit">取消编辑</view>
-        <view wx:if="{{!planEditId}}" class="btn btn-cancel" bindtap="hidePlan">关闭</view>
-        <view wx:if="{{planEditId}}" class="btn btn-ok" bindtap="updatePlan">保存修改</view>
-        <view wx:if="{{!planEditId}}" class="btn btn-ok" bindtap="addPlan">创建计划</view>
-      </view>
-    </view>
-  </view>
-</view>
 
 <!-- 底部导航 -->
 <view class="bottom-bar">

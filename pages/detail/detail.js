@@ -1,5 +1,120 @@
 var app = getApp();
 
+// ---- 利好关键词（与云函数保持同步）----
+var BULLISH_KW = [
+  { kw: '回购', score: 3 }, { kw: '增持', score: 3 },
+  { kw: '中标', score: 3 }, { kw: '分红', score: 2 },
+  { kw: '派息', score: 2 }, { kw: '权益分派', score: 2 },
+  { kw: '业绩.*增长', score: 3, regex: true },
+  { kw: '营收.*增长', score: 2, regex: true },
+  { kw: '利润.*增长', score: 2, regex: true },
+  { kw: '净利润.*增长', score: 2, regex: true },
+  { kw: '超预期', score: 3 },
+  { kw: '扭亏为盈', score: 3 },
+  { kw: '盈利.*大幅', score: 2, regex: true },
+  { kw: '产能.*投产', score: 2, regex: true },
+  { kw: '战略合作', score: 2 },
+  { kw: '合作.*协议', score: 2, regex: true },
+  { kw: '订单', score: 2 },
+  { kw: '合同', score: 1 },
+  { kw: '突破', score: 2 },
+  { kw: '创新', score: 1 },
+  { kw: '获批', score: 2 },
+  { kw: '许可', score: 1 },
+  { kw: '研发.*成功', score: 2, regex: true },
+  { kw: '临床试验.*成功', score: 3, regex: true },
+  { kw: '产品.*上市', score: 2, regex: true },
+  { kw: '项目.*落地', score: 2, regex: true },
+  { kw: '产能扩张', score: 2 },
+  { kw: '市场.*拓展', score: 1, regex: true },
+  { kw: '海外.*市场', score: 2, regex: true },
+  { kw: '新品发布', score: 1 },
+  { kw: '资产重组', score: 1 },
+  { kw: '并购', score: 1 },
+  { kw: '资源整合', score: 1 },
+  { kw: '补贴', score: 1 },
+  { kw: '税收优惠', score: 1 },
+  { kw: '政策.*扶持', score: 2, regex: true },
+  { kw: '利好', score: 2 },
+  { kw: '战略投资者', score: 2 },
+  { kw: '引进投资', score: 1 },
+  { kw: '定增', score: 1 },
+  { kw: '员工持股', score: 1 },
+  { kw: '股权激励', score: 1 },
+  { kw: '授予.*期权', score: 1, regex: true },
+  { kw: '投资收益', score: 1 },
+  { kw: '资产.*增值', score: 2, regex: true }
+];
+
+// ---- 利空关键词 ----
+var BEARISH_KW = [
+  { kw: '减持', score: 3 }, { kw: '质押', score: 2 },
+  { kw: "冻结", score: 3 }, { kw: "强制平仓", score: 3 }, { kw: "平仓", score: 3 },
+  { kw: "预亏", score: 3 }, { kw: "预减", score: 2 }, { kw: "业绩.*亏", score: 3, regex: true },
+  { kw: "大幅.*下降", score: 3, regex: true }, { kw: "大幅.*下滑", score: 3, regex: true },
+  { kw: '亏损', score: 3 },
+  { kw: '业绩.*下降', score: 3, regex: true },
+  { kw: '业绩.*下滑', score: 3, regex: true },
+  { kw: '营收.*下降', score: 3, regex: true },
+  { kw: '营收.*下滑', score: 2, regex: true },
+  { kw: '利润.*下降', score: 3, regex: true },
+  { kw: '利润.*下滑', score: 2, regex: true },
+  { kw: '净利.*亏损', score: 3, regex: true },
+  { kw: '退市', score: 3 },
+  { kw: '暂停上市', score: 3 },
+  { kw: '风险警示', score: 3 },
+  { kw: '债务违约', score: 3 },
+  { kw: '诉讼', score: 2 }, { kw: '仲裁', score: 1 },
+  { kw: '处罚', score: 2 }, { kw: '罚款', score: 2 },
+  { kw: '调查', score: 2 }, { kw: '立案', score: 2 },
+  { kw: '查封', score: 2 }, { kw: '扣押', score: 2 },
+  { kw: '降级', score: 2 }, { kw: '负面', score: 2 },
+  { kw: '产能.*过剩', score: 2, regex: true },
+  { kw: '客户.*流失', score: 2, regex: true },
+  { kw: '订单.*取消', score: 3, regex: true },
+  { kw: '终止.*合作', score: 2, regex: true },
+  { kw: '资产.*减值', score: 2, regex: true },
+  { kw: '商誉.*减值', score: 3, regex: true },
+  { kw: '计提.*减值', score: 2, regex: true },
+  { kw: '原材料.*上涨', score: 1, regex: true },
+  { kw: '成本.*上升', score: 1, regex: true },
+  { kw: '价格.*下降', score: 2, regex: true },
+  { kw: '毛利.*率下降', score: 2, regex: true },
+  { kw: '定单.*下降', score: 2, regex: true },
+  { kw: '产能.*受限', score: 1, regex: true },
+  { kw: '疫情影响', score: 1 },
+  { kw: '停牌', score: 1 },
+  { kw: '异常波动', score: 1 },
+  { kw: '警示函', score: 2 },
+  { kw: '问询函', score: 1 },
+  { kw: '监管函', score: 2 },
+  { kw: '责令改正', score: 2 },
+  { kw: '环保.*处罚', score: 2, regex: true },
+  { kw: '安全生产.*事故', score: 3, regex: true },
+  { kw: '董监高.*辞职', score: 1, regex: true },
+  { kw: '核心.*人员.*离职', score: 2, regex: true }
+];
+
+// ---- 中性公告栏目 ----
+var NEUTRAL_COLUMNS_KW = [
+  '股东大会', '董事会决议', '监事会决议',
+  '社会责任', '定期报告', '业绩说明会',
+  '年度报告', '半年度报告', '季度报告',
+  '章程', '制度', '议事规则',
+  '独立董事', '聘任', '换届选举',
+  '担保', '授信', '银行授信',
+  '委托理财', '闲置资金', '现金管理',
+  '募集资金', '使用情况', '存放',
+  '关联交易', '日常关联交易',
+  '股权结构', '股东信息',
+  '投资者关系', '调研', '接待',
+  '会计政策', '会计估计',
+  '续聘', '审计机构', '会计师事务所',
+  '限制性股票', '股权激励.*注销', '回购注销',
+  '权益分派', '分配方案', '权益分派实施', '分红实施',
+  '部分.*解锁', '部分.*解除限售'
+];
+
 Page({
   data: {
     fund: null,
@@ -335,13 +450,20 @@ Page({
     var fund = app.globalData.funds[self._fundIndex];
     if (fund && fund._holdingsLoaded) {
       self.setData({
-        sectors: fund.holdings ? fund.holdings.sectors : [],
+        sectors: fund._mergedSectors || (fund.holdings ? fund.holdings.sectors : []),
         stocks: fund.holdings ? fund.holdings.stocks : [],
         newsMap: fund.news || {},
-        suggest: fund.suggestion || null, suggestDaily: fund.suggestDaily || null
+        suggest: fund.suggestion || null, suggestDaily: fund.suggestDaily || null,
+        stats: fund._aiStats || null,
+        aiPowered: fund._aiPowered || false,
+        aiSectors: fund._aiSectors || [],
+        sectorNewsMap: fund._sectorNewsMap || {}
       });
       self.applySuggestion();
       if (!self.data.chartData) self.loadChart('1M');
+      if (fund._aiSectors && fund._aiSectors.length > 0 && (!fund._sectorNewsMap || Object.keys(fund._sectorNewsMap).length === 0)) {
+        self.loadSectorNews(fund._aiSectors);
+      }
       return;
     }
 
@@ -388,9 +510,44 @@ Page({
     });
   },
 
+
+  // 对单条板块新闻进行利好/利空/中性分类
+  _classifySectorNews: function(text, column) {
+    column = column || '';
+
+    // 1) 中性例行公告
+    for (var i = 0; i < NEUTRAL_COLUMNS_KW.length; i++) {
+      var pattern = NEUTRAL_COLUMNS_KW[i];
+      try { var re = new RegExp(pattern); if (re.test(column) || re.test(text)) return { type: 'neutral', reason: '例行公告: ' + column }; }
+      catch(e) {}
+    }
+
+    // 2) 利好关键词
+    var maxBull = 0, bullKw = '';
+    BULLISH_KW.forEach(function(item) {
+      var matched = item.regex ? new RegExp(item.kw).test(text) : text.indexOf(item.kw) >= 0;
+      if (matched && item.score > maxBull) { maxBull = item.score; bullKw = item.kw; }
+    });
+
+    // 3) 利空关键词
+    var maxBear = 0, bearKw = '';
+    BEARISH_KW.forEach(function(item) {
+      var matched = item.regex ? new RegExp(item.kw).test(text) : text.indexOf(item.kw) >= 0;
+      if (matched && item.score > maxBear) { maxBear = item.score; bearKw = item.kw; }
+    });
+
+    // 4) 判断
+    if (maxBull > maxBear) return { type: 'bullish', reason: '关键词: ' + bullKw };
+    if (maxBear > maxBull) return { type: 'bearish', reason: '关键词: ' + bearKw };
+    if (maxBull === 0 && maxBear === 0) return { type: 'neutral', reason: '无明确情绪信号' };
+    return { type: 'neutral', reason: '多空均衡' };
+  },
+
   loadSectorNews: function(sectors) {
+
     var self = this;
     if (!sectors || sectors.length === 0) return;
+    self.setData({ loadingSectorNews: true });
     var tasks = sectors.map(function(s) {
       return app.fetchSectorNews(s.name).then(function(news) {
         return { sector: s.name, news: news.slice(0, 8) };
@@ -398,8 +555,15 @@ Page({
     });
     Promise.all(tasks).then(function(results) {
       var map = {};
-      results.forEach(function(r) { map[r.sector] = r.news; });
+      results.forEach(function(r) {
+        map[r.sector] = r.news.map(function(n) {
+          var label = self._classifySectorNews((n.title || '') + ' ' + (n.column || ''), n.column);
+          return { title: n.title, date: n.date, type: label.type, reason: label.reason };
+        });
+      });
       self.setData({ sectorNewsMap: map, loadingSectorNews: false });
+      var fund = app.globalData.funds[self._fundIndex];
+      if (fund) { fund._sectorNewsMap = map; fund._mergedSectors = self.data.sectors; }
     }).catch(function() {
     });
   },
@@ -474,7 +638,7 @@ Page({
       }
       self.applySuggestion();
       var fund = app.globalData.funds[self._fundIndex];
-      if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund.suggestDaily = suggestDaily; fund._holdingsLoaded = true; }
+      if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund.suggestDaily = suggestDaily; fund._holdingsLoaded = true; fund._aiStats = result.stats || null; fund._aiSectors = aiSectors; fund._aiPowered = result.aiPowered || false; }
     }).catch(function(err) {
       self.setData({ loadingAnalysis: false });
     });

@@ -43,6 +43,7 @@
     bindtap="switchTab" data-id="{{item.id}}">
     {{item.name}}
   </view>
+  <view class="filter-tab-spacer"></view>
 </scroll-view>
 
 <view class="toolbar">
@@ -51,17 +52,15 @@
     <text wx:for="{{sortOptions}}" wx:key="id" wx:if="{{item.id === activeSort}}">{{item.label}}</text>
     <text class="sort-arrow">{{showSortPicker ? '▴' : '▾'}}</text>
   </view>
-</view>
-
-<view wx:if="{{showSortPicker}}" class="sort-dropdown">
-  <view wx:for="{{sortOptions}}" wx:key="id"
-    class="sort-option {{activeSort === item.id ? 'sort-option-active' : ''}}"
-    bindtap="selectSort" data-id="{{item.id}}">
-    {{item.label}}
-    <text wx:if="{{activeSort === item.id}}" class="sort-check">✓</text>
+  <view wx:if="{{showSortPicker}}" class="sort-dropdown">
+    <view wx:for="{{sortOptions}}" wx:key="id"
+      class="sort-option {{activeSort === item.id ? 'sort-option-active' : ''}}"
+      bindtap="selectSort" data-id="{{item.id}}">
+      {{item.label}}
+      <text wx:if="{{activeSort === item.id}}" class="sort-check">✓</text>
+    </view>
   </view>
 </view>
-
 <scroll-view class="scrollarea" scroll-y
   refresher-enabled refresher-triggered="{{refreshing}}"
   bindrefresherrefresh="onRefresh" refresher-threshold="80"
@@ -133,6 +132,7 @@
 
     <view style="height:120rpx;"></view>
   </view>
+  <view class="filter-tab-spacer"></view>
 </scroll-view>
 
 </view>

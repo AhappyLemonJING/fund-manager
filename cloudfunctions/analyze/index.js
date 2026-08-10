@@ -132,7 +132,6 @@ exports.main = async (event) => {
   var newsMap = event.newsMap || {};
   var fundName = event.fundName || '';
   var navTrend = event.navTrend || null;
-  var position = event.position || null;
   var dailyChangePct = event.dailyChangePct != null ? event.dailyChangePct : null;
 
   // 先统计每只股票有多少新闻
@@ -146,6 +145,7 @@ exports.main = async (event) => {
     return {
       labeled: {},
       suggest: { action: 'hold', reason: '近24小时无相关公告，暂无法进行分析。' },
+      suggestDaily: null,
       stats: { totalNews: 0, bullish: 0, bearish: 0, neutral: 0, stocks: [] },
       aiPowered: false
     };
@@ -154,20 +154,30 @@ exports.main = async (event) => {
   // 跑规则引擎（作为 AI 输入特征 + 降级备用）
   var rulesResult = runRulesEngine(stocks, newsMap);
 
-  // 尝试调用 DeepSeek AI 分析（标准版 + 融入当日涨跌幅版 + 板块分析 并行）
+  // 尝试调用 DeepSeek AI 分析（板块分析先，当日信号+综合分析并行）
   var aiResult = null;
   var sectorResult = null;
-  var aiDailyResult = null;
+  var dailySignalResult = null;
   try {
-    var promises = [callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, null)];
-    if (dailyChangePct != null) {
-      promises.push(callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct));
-    }
-    var results = await Promise.all(promises);
+    // 第一步：板块分析（当日信号和综合分析都依赖板块结果）
     sectorResult = await callDeepSeekSectors(stocks).catch(function(e) {
       console.error('板块分析失败:', e.message || e);
-    });    aiResult = results[0];
-    if (results.length > 1) aiDailyResult = results[1];
+      return null;
+    });
+
+    // 第二步：当日信号分析和综合分析并行
+    var parallelResults = await Promise.all([
+      callDeepSeekDailySignal(stocks, newsMap, rulesResult, fundName, navTrend, sectorResult, dailyChangePct).catch(function(e) {
+        console.error('当日信号分析失败:', e.message || e);
+        return null;
+      }),
+      callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, dailyChangePct).catch(function(e) {
+        console.error('综合分析失败:', e.message || e);
+        return null;
+      })
+    ]);
+    dailySignalResult = parallelResults[0];
+    aiResult = parallelResults[1];
   } catch (e) {
     console.error('DeepSeek API 调用失败，降级为规则引擎:', e.message || e);
   }
@@ -177,8 +187,8 @@ exports.main = async (event) => {
     aiResult.stats = rulesResult.stats;
     if (sectorResult) aiResult.relatedSectors = sectorResult.sectors || [];
     aiResult.aiPowered = true;
-    if (aiDailyResult) {
-      aiResult.suggestDaily = aiDailyResult.suggest;
+    if (dailySignalResult) {
+      aiResult.suggestDaily = dailySignalResult;
     }
     return aiResult;
   }
@@ -385,6 +395,96 @@ function computeSuggestion(bull, bear, neu, total, stockScores) {
 }
 
 
+
+// ============ 共享：构建新闻上下文（供多个 AI 函数复用）============
+function buildNewsSummary(stocks, newsMap, labels) {
+  var allNewsItems = [];
+  stocks.forEach(function(s) {
+    var newsList = newsMap[s.code] || [];
+    var stockLabels = labels[s.code] || [];
+    newsList.forEach(function(n, i) {
+      var label = stockLabels[i] || {};
+      var daysAgo = computeDaysAgo(n.time);
+      allNewsItems.push({
+        stockCode: s.code,
+        stockName: s.name || '',
+        stockWeight: s.weight || 0,
+        title: n.title || n.text || '',
+        column: n.column || '',
+        type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
+        reason: label.reason || '',
+        timeStr: n.time || '',
+        daysAgo: daysAgo,
+        daysAgoNum: daysAgo ? parseInt(daysAgo) : 999
+      });
+    });
+  });
+  allNewsItems.sort(function(a, b) {
+    var da = isNaN(a.daysAgoNum) ? 999 : a.daysAgoNum;
+    var db = isNaN(b.daysAgoNum) ? 999 : b.daysAgoNum;
+    return da - db;
+  });
+  var recent3d = 0, recent7d = 0, older7d = 0;
+  allNewsItems.forEach(function(n) {
+    if (n.daysAgoNum <= 3) recent3d++;
+    else if (n.daysAgoNum <= 7) recent7d++;
+    else older7d++;
+  });
+  var stockMap = {};
+  stocks.forEach(function(s) {
+    stockMap[s.code] = {
+      name: s.name || '',
+      code: s.code,
+      weight: s.weight || 0,
+      news: [],
+      bullCount: 0, bearCount: 0, neuCount: 0
+    };
+  });
+  allNewsItems.forEach(function(n) {
+    var sm = stockMap[n.stockCode];
+    if (!sm) return;
+    var typeTag = n.type === 'bullish' ? '[利好]' : n.type === 'bearish' ? '[利空]' : '[中性]';
+    var extra = n.reason ? ' (' + n.reason + ')' : '';
+    var timeLabel = n.daysAgo ? n.daysAgo : '';
+    sm.news.push('  - ' + typeTag + ' ' + timeLabel + ' ' + n.title + extra);
+    if (n.type === 'bullish') sm.bullCount++;
+    else if (n.type === 'bearish') sm.bearCount++;
+    else sm.neuCount++;
+  });
+  var stockDetails = [];
+  stocks.forEach(function(s) {
+    var sm = stockMap[s.code];
+    if (!sm || sm.news.length === 0) return;
+    var weightLevel = sm.weight >= 8 ? '高' : sm.weight >= 3 ? '中' : '低';
+    stockDetails.push({
+      text: '【' + sm.name + '(' + sm.code + ') 持仓权重 ' + sm.weight + '% | 影响: ' + weightLevel + '】'
+        + '\n  利好/利空/中性: ' + sm.bullCount + '/' + sm.bearCount + '/' + sm.neuCount
+        + '\n' + sm.news.join('\n'),
+      weight: sm.weight,
+      bullCount: sm.bullCount,
+      bearCount: sm.bearCount
+    });
+  });
+  stockDetails.sort(function(a, b) { return b.weight - a.weight; });
+  var highWeightStocks = stockDetails.filter(function(s) { return s.weight >= 5; });
+  var highWeightSection = '';
+  if (highWeightStocks.length > 0) {
+    highWeightSection = '【重点关注 — 高权重重仓股】\n';
+    highWeightSection += '以下股票持仓权重≥5%，对基金净值影响最大：\n';
+    highWeightStocks.forEach(function(s) {
+      var signal = s.bullCount > s.bearCount ? '↗ 偏多' : s.bearCount > s.bullCount ? '↘ 偏空' : '↔ 中性';
+      highWeightSection += '  ' + signal + '\n';
+    });
+    highWeightSection += '\n';
+  }
+  return {
+    allNewsItems: allNewsItems,
+    stockDetails: stockDetails,
+    highWeightSection: highWeightSection,
+    timeDist: { recent3d: recent3d, recent7d: recent7d, older7d: older7d }
+  };
+}
+
 // ============ DeepSeek AI 分析 ============
 
 // ---- 辅助函数 ----
@@ -409,7 +509,7 @@ function computeDaysAgo(timeStr) {
   } catch (e) { return null; }
 }
 
-function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position, dailyChangePct) {
+function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, dailyChangePct) {
   return new Promise(function(resolve, reject) {
     var apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
@@ -419,99 +519,15 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
     var stats = rulesResult.stats;
     var labels = rulesResult.labeled;
 
-    // ---- 1. 构建带时间信息的新闻列表 ----
-    var allNewsItems = [];
-    stocks.forEach(function(s) {
-      var newsList = newsMap[s.code] || [];
-      var stockLabels = labels[s.code] || [];
-      newsList.forEach(function(n, i) {
-        var label = stockLabels[i] || {};
-        var daysAgo = computeDaysAgo(n.time);
-        allNewsItems.push({
-          stockCode: s.code,
-          stockName: s.name || '',
-          stockWeight: s.weight || 0,
-          title: n.title || n.text || '',
-          column: n.column || '',
-          type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
-          reason: label.reason || '',
-          timeStr: n.time || '',
-          daysAgo: daysAgo,
-          daysAgoNum: daysAgo ? parseInt(daysAgo) : 999
-        });
-      });
-    });
+    // ---- 1. 构建新闻上下文（复用 buildNewsSummary）----
+    var summary = buildNewsSummary(stocks, newsMap, labels);
+    var stockDetails = summary.stockDetails;
+    var highWeightSection = summary.highWeightSection;
+    var recent3d = summary.timeDist.recent3d;
+    var recent7d = summary.timeDist.recent7d;
+    var older7d = summary.timeDist.older7d;
 
-    // 按时间排序（最近在前）
-    allNewsItems.sort(function(a, b) {
-      var da = isNaN(a.daysAgoNum) ? 999 : a.daysAgoNum;
-      var db = isNaN(b.daysAgoNum) ? 999 : b.daysAgoNum;
-      return da - db;
-    });
-
-    // 时间分布统计
-    var recent3d = 0, recent7d = 0, older7d = 0;
-    allNewsItems.forEach(function(n) {
-      if (n.daysAgoNum <= 3) recent3d++;
-      else if (n.daysAgoNum <= 7) recent7d++;
-      else older7d++;
-    });
-
-    // ---- 2. 按股票分组，构建详情 ----
-    var stockDetails = [];
-    var stockMap = {};
-    stocks.forEach(function(s) {
-      stockMap[s.code] = {
-        name: s.name || '',
-        code: s.code,
-        weight: s.weight || 0,
-        news: [],
-        bullCount: 0, bearCount: 0, neuCount: 0
-      };
-    });
-
-    allNewsItems.forEach(function(n) {
-      var sm = stockMap[n.stockCode];
-      if (!sm) return;
-      var typeTag = n.type === 'bullish' ? '[利好]' : n.type === 'bearish' ? '[利空]' : '[中性]';
-      var extra = n.reason ? ' (' + n.reason + ')' : '';
-      var timeLabel = n.daysAgo ? n.daysAgo : '';
-      sm.news.push('  - ' + typeTag + ' ' + timeLabel + ' ' + n.title + extra);
-      if (n.type === 'bullish') sm.bullCount++;
-      else if (n.type === 'bearish') sm.bearCount++;
-      else sm.neuCount++;
-    });
-
-    // 按权重降序排列
-    stocks.forEach(function(s) {
-      var sm = stockMap[s.code];
-      if (!sm || sm.news.length === 0) return;
-      var weightLevel = sm.weight >= 8 ? '高' : sm.weight >= 3 ? '中' : '低';
-      stockDetails.push({
-        text: '【' + sm.name + '(' + sm.code + ') 持仓权重 ' + sm.weight + '% | 影响: ' + weightLevel + '】' +
-          '\n  利好/利空/中性: ' + sm.bullCount + '/' + sm.bearCount + '/' + sm.neuCount +
-          '\n' + sm.news.join('\n'),
-        weight: sm.weight,
-        bullCount: sm.bullCount,
-        bearCount: sm.bearCount
-      });
-    });
-    stockDetails.sort(function(a, b) { return b.weight - a.weight; });
-
-    // ---- 3. 高权重股摘要 ----
-    var highWeightStocks = stockDetails.filter(function(s) { return s.weight >= 5; });
-    var highWeightSection = '';
-    if (highWeightStocks.length > 0) {
-      highWeightSection = '【重点关注 — 高权重重仓股】\n';
-      highWeightSection += '以下股票持仓权重\\u22655%，对基金净值影响最大：\n';
-      highWeightStocks.forEach(function(s) {
-        var signal = s.bullCount > s.bearCount ? '\\u2197 偏多' : s.bearCount > s.bullCount ? '\\u2198 偏空' : '\\u2194 中性';
-        highWeightSection += '  ' + signal + '\n';
-      });
-      highWeightSection += '\n';
-    }
-
-    // ---- 4. 组装 prompt ----
+    // ---- 2. 组装 prompt ----
     var rulesSuggestion = rulesResult.suggest;
     var fundLabel = fundName ? '【基金名称】' + fundName + '\n' : '';
 
@@ -522,12 +538,6 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
         (navTrend['3m'] != null ? '近3月: ' + formatPct(navTrend['3m']) + '  ' : '') +
         (navTrend['6m'] != null ? '近6月: ' + formatPct(navTrend['6m']) + '\n' : '\n') +
         '\n';
-    }
-
-    var posSection = '';
-    if (position) {
-      posSection = '【持仓状态】\n' +
-        '持有天数: ' + (position.holdingDays || 0) + '天 | 持仓盈亏: ' + formatPct(position.profitPct) + '\n\n';
     }
 
     var dailySection = '';
@@ -544,7 +554,7 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
       '你是一位专业的基金分析助手。请根据以下信息，对基金的投资操作给出建议。\n\n' +
       fundLabel +
       navSection +
-      posSection + dailySection +
+      dailySection +
       '【新闻总览】共 ' + stats.totalNews + ' 条 | 利好' + stats.bullish + ' / 利空' + stats.bearish + ' / 中性' + stats.neutral + '\n' +
       timeDistSection +
       highWeightSection +
@@ -554,10 +564,9 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
       '（注意：以上为规则引擎的初步判断，仅供参考。请基于你的专业判断独立分析，不要盲从规则引擎的结论。）\n\n' +
       '请按以下框架综合分析：\n' +
       '1. 净值趋势与新闻信号的一致性：同向则强化结论，背离则需要重点权衡\n' +
-      '2. 持仓盈亏的决策影响：浮盈时可更积极地考虑减仓，浮亏时加仓需更谨慎\n' +
-      '3. 高权重持仓股的信号影响力远大于低权重股\n' +
-      '4. 近3天内的新闻参考价值显著高于7天以上的旧闻' + (dailyChangePct != null ? '\n' +
-      '5. 当日涨跌幅的短期信号：如果当日大幅下跌且中期趋势向好或利好密集→可能是短期错杀，考虑加仓；如果当日大幅上涨但趋势偏弱或利空密集→可能是情绪过热，考虑减仓；小幅波动应以中期趋势为主' : '') + '\n\n' +
+      '2. 高权重持仓股的信号影响力远大于低权重股\n' +
+      '3. 近3天内的新闻参考价值显著高于7天以上的旧闻' + (dailyChangePct != null ? '\n' +
+      '4. 当日涨跌幅的短期信号：如果当日大幅下跌且中期趋势向好或利好密集→可能是短期错杀，考虑加仓；如果当日大幅上涨但趋势偏弱或利空密集→可能是情绪过热，考虑减仓；小幅波动应以中期趋势为主' : '') + '\n\n' +
       '最终输出纯 JSON 格式，不要使用 markdown 代码块：\n' +
       '{"action":"buy|sell|hold","reason":"120-180字分析理由，涵盖以上维度的判断依据"}';
 
@@ -622,6 +631,143 @@ function callDeepSeek(stocks, newsMap, rulesResult, fundName, navTrend, position
           resolve({ suggest: { action: aiOutput.action, reason: aiOutput.reason } });
         } catch (e) {
           reject(new Error('DeepSeek 响应解析失败: ' + e.message));
+        }
+      });
+    });
+
+    req.on('error', function(e) { reject(e); });
+    req.on('timeout', function() { req.abort(); reject(new Error('DeepSeek API 请求超时')); });
+    req.write(postData);
+    req.end();
+  });
+}
+
+
+// ============ DeepSeek AI 当日信号分析 ============
+
+function callDeepSeekDailySignal(stocks, newsMap, rulesResult, fundName, navTrend, sectorResult, dailyChangePct) {
+  return new Promise(function(resolve, reject) {
+    var apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey || apiKey === 'sk-xxxxxxxxxxxxxxxx' || apiKey.length < 10) {
+      return reject(new Error('DEEPSEEK_API_KEY 未配置或无效'));
+    }
+
+    var stats = rulesResult.stats;
+    var labels = rulesResult.labeled;
+
+    // ---- 1. 构建新闻上下文 ----
+    var summary = buildNewsSummary(stocks, newsMap, labels);
+    var stockDetails = summary.stockDetails;
+    var timeDist = summary.timeDist;
+
+    // ---- 2. 组装当日信号分析 prompt ----
+    var fundLabel = fundName ? '【基金名称】' + fundName + '\n' : '';
+
+    var navSection = '';
+    if (navTrend) {
+      navSection = '【近期净值走势】\n' +
+        (navTrend['1m'] != null ? '近1月: ' + formatPct(navTrend['1m']) + '  ' : '') +
+        (navTrend['3m'] != null ? '近3月: ' + formatPct(navTrend['3m']) + '  ' : '') +
+        (navTrend['6m'] != null ? '近6月: ' + formatPct(navTrend['6m']) + '\n' : '\n') +
+        '（关注近1月走势作为短期趋势参考）\n\n';
+    }
+
+    var dailySection = '';
+    if (dailyChangePct != null) {
+      var direction = dailyChangePct >= 0 ? '上涨' : '下跌';
+      var magnitude = Math.abs(dailyChangePct) >= 2 ? '大幅' : Math.abs(dailyChangePct) >= 1 ? '' : '小幅';
+      dailySection = '【当日涨跌幅】' + magnitude + direction + formatPct(dailyChangePct) + '\n\n';
+    }
+
+    var sectorSection = '';
+    if (sectorResult && sectorResult.sectors && sectorResult.sectors.length > 0) {
+      sectorSection = '【关联板块分析】\n';
+      sectorResult.sectors.forEach(function(sec) {
+        sectorSection += sec.name + ': ' + sec.reason + '\n';
+      });
+      sectorSection += '\n';
+    }
+
+    var prompt =
+      '你是一位专业的基金当日信号分析助手。请根据以下信息，分析该基金当日的市场信号方向。\n\n' +
+      fundLabel +
+      dailySection +
+      navSection +
+      sectorSection +
+      '【新闻总览】共 ' + stats.totalNews + ' 条 | 近期新闻: 利好' + stats.bullish + ' / 利空' + stats.bearish + ' / 中性' + stats.neutral + '\n' +
+      '【新闻时效分布】近3天内: ' + timeDist.recent3d + '条 | 3-7天: ' + timeDist.recent7d + '条 | 7天以上: ' + timeDist.older7d + '条\n\n' +
+      '【重仓股新闻】（按权重降序，时间倒序）\n' +
+      stockDetails.map(function(s) { return s.text; }).join('\n\n') + '\n\n' +
+      '请按以下框架分析当日信号方向：\n' +
+      '1. 重仓股新闻的情绪倾向：利好/利空新闻的数量和权重分布，高权重股的信号方向是关键\n' +
+      '2. 关联板块的整体氛围：板块当前处于热点还是承压状态，对基金净值的传导影响\n' +
+      '3. 近期走势与新闻的一致性：走势和新闻同向则强化信号，背离则需特别留意\n' +
+      '4. 当日涨跌幅的即时影响：大幅波动需特别关注，小幅波动参考性较弱\n' +
+      '5. 近3天内的新闻参考价值远高于7天以上的旧闻\n\n' +
+      '最终输出纯 JSON 格式，不要使用 markdown 代码块：\n' +
+      '{"signal":"bullish|bearish|neutral","reason":"80-120字分析理由，说明当日市场信号方向及判断依据，涵盖重仓股情绪、板块氛围和走势一致性"}';
+
+    var postData = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: '你是专业的基金当日信号分析师。输出纯 JSON，不输出任何额外文字。signal 取值: bullish(偏多)/bearish(偏空)/neutral(中性)。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 500,
+      stream: false
+    });
+
+    var https = require('https');
+    var url = require('url');
+    var parsedUrl = url.parse('https://api.deepseek.com/v1/chat/completions');
+
+    var options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Length': Buffer.byteLength(postData, 'utf8')
+      },
+      timeout: 30000
+    };
+
+    var req = https.request(options, function(res) {
+      var body = '';
+      res.on('data', function(chunk) { body += chunk; });
+      res.on('end', function() {
+        try {
+          var resp = JSON.parse(body);
+
+          if (res.statusCode !== 200) {
+            var errMsg = resp.error && resp.error.message ?
+              resp.error.message : ('HTTP ' + res.statusCode);
+            console.error('DeepSeek 当日信号 API 返回错误:', body);
+            return reject(new Error(errMsg));
+          }
+
+          var content = resp.choices && resp.choices[0] && resp.choices[0].message.content;
+          if (!content) return reject(new Error('DeepSeek 当日信号返回内容为空'));
+
+          var jsonStr = content.trim();
+          var jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+          var aiOutput = JSON.parse(jsonStr);
+
+          if (!aiOutput.signal || !aiOutput.reason) {
+            return reject(new Error('DeepSeek 返回 JSON 缺少 signal 或 reason'));
+          }
+          if (['bullish', 'bearish', 'neutral'].indexOf(aiOutput.signal) === -1) {
+            return reject(new Error('无效的 signal: ' + aiOutput.signal));
+          }
+
+          console.log('DeepSeek 当日信号分析成功: signal=' + aiOutput.signal);
+          resolve({ signal: aiOutput.signal, reason: aiOutput.reason });
+        } catch (e) {
+          reject(new Error('DeepSeek 当日信号响应解析失败: ' + e.message));
         }
       });
     });
