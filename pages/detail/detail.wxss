@@ -135,8 +135,6 @@ page {
 }
 
 /* ========== 交易记录按钮 ========== */
-}
-
 /* ========== 交易记录弹窗 ========== */
 .trade-mask {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
