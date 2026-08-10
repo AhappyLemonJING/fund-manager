@@ -18,7 +18,6 @@
       <view wx:if="{{navDate}}" class="d-date">净值日期: {{navDate}}
         <text wx:if="{{lastUpdateTime}}" style="margin-left:16rpx;color:var(--text-dim);">刷新 {{lastUpdateTime}}</text>
       </view>
-      <view class="d-trade-btn" bindtap="openTradeRecords">交易记录</view>
     </view>
 
   </view>
@@ -103,6 +102,9 @@
             <view class="news-body">
               <text class="news-text">{{n.title}}</text>
               <text wx:if="{{n.date}}" class="news-time">{{n.date}}</text>
+            </view>
+            <view class="news-tag {{n.type === 'bullish' ? 't-bull' : n.type === 'bearish' ? 't-bear' : 't-neu'}}">
+              {{n.type === 'bullish' ? '利好' : n.type === 'bearish' ? '利空' : '中性'}}
             </view>
           </view>
         </block>

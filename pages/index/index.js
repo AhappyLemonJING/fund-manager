@@ -10,8 +10,6 @@ Page({
     tabs: [],              // group filter tabs
     activeGroup: 'all',
     groups: [],
-    // portfolio summary
-    portfolio: null,
     // add modal
     showAddModal: false,
     inputCode: '',
@@ -46,38 +44,11 @@ Page({
     showSwitchTypeModal: false,
     switchTypeIndex: -1,
     switchTypeTarget: '',
-    // trade modal
-    showTradeModal: false,
-    tradeFundCode: '',
-    tradeFundName: '',
-    tradeFundNav: 0,
-    tradeRecords: [],
-    tradeShares: '',
-    tradeAmount: '',
-    tradeDate: '',
-    tradeType: 'buy',
-    tradeIsBefore3pm: true,
-    tradePl: null,
     // refresh
     refreshing: false,
     syncing: false,
     lastSyncTime: '',
     showSyncConfirm: false,
-    // 持仓手动覆盖编辑
-    editMarketValue: '',
-    editProfit: '',
-    editHoldingDays: '',
-    // 定投计划弹窗
-    showPlanModal: false,
-    planFundCode: "",
-    planFundName: "",
-    planFundNav: 0,
-    fundPlans: [],
-    planEditId: "",
-    planAmount: "",
-    planPeriod: "weekly",
-    planDayOfWeek: 1,
-    planDayOfMonth: 1,
   },
 
   noop: function() {},
@@ -87,12 +58,6 @@ Page({
     app.globalData.groups = app.loadGroups();
     app.globalData.groupMap = app.loadGroupMap();
     self.buildGroupTabs();
-
-    // 设置默认日期为今天
-    var now = new Date();
-    self.setData({ tradeDate: now.getFullYear() + '-' +
-      String(now.getMonth() + 1).padStart(2, '0') + '-' +
-      String(now.getDate()).padStart(2, '0') });
 
     var codes = app.loadCodes();
     if (codes.length === 0) return;
@@ -108,10 +73,8 @@ Page({
    if (app.globalData.funds.length > 0) {
      this.setData({ funds: app.globalData.funds });
      this.applyFilter();
-     this.updatePortfolio();
-      this.analyzeAllFunds();
+       this.analyzeAllFunds();
    }
-    app.executeAllPlans();
   },
 
   onHide: function() {
@@ -160,7 +123,6 @@ Page({
     return Promise.all(tasks).then(function() {
       self.setData({ funds: app.globalData.funds });
       self.applyFilter();
-      self.updatePortfolio();
     });
   },
 
@@ -181,14 +143,12 @@ Page({
     var id = e.currentTarget.dataset.id;
     this.setData({ activeTab: id, activeGroup: 'all' });
     this.applyFilter();
-    this.updatePortfolio();
   },
 
   switchGroup: function(e) {
     var id = e.currentTarget.dataset.id;
     this.setData({ activeGroup: id });
     this.applyFilter();
-    this.updatePortfolio();
   },
 
     goMarket: function() {
@@ -264,39 +224,6 @@ Page({
 
   // ============ 持仓总览 ============
 
-  updatePortfolio: function() {
-    // 按当前分组筛选基金
-    var activeGroup = this.data.activeGroup;
-    var map = app.globalData.groupMap;
-    var filteredFunds = app.globalData.funds;
-    if (activeGroup !== 'all') {
-      if (activeGroup === 'ungrouped') {
-        filteredFunds = filteredFunds.filter(function(f) { return !map[f.code]; });
-      } else {
-        filteredFunds = filteredFunds.filter(function(f) { return map[f.code] === activeGroup; });
-      }
-    }
-    var pf = app.calcPortfolio(filteredFunds);
-    pf.totalMarketStr = pf.totalMarket.toFixed(2);
-    pf.totalCostStr = pf.totalCost.toFixed(2);
-    var dailySign = pf.totalDailyProfit >= 0 ? '+' : '';
-    pf.totalDailyProfitStr = dailySign + pf.totalDailyProfit.toFixed(2);
-    var dailyDenom = pf.totalMarket - pf.totalDailyProfit;
-    var dailyPct = dailyDenom > 0 ? (pf.totalDailyProfit / dailyDenom) * 100 : 0;
-    pf.totalDailyPctStr = (dailyPct >= 0 ? '+' : '') + dailyPct.toFixed(2);
-    for (var i = 0; i < pf.items.length; i++) {
-      var pi = pf.items[i].pl;
-      pi.avgCostStr = pi.avgCost.toFixed(3);
-      pi.sharesStr = pi.shares.toFixed(0);
-      pi.marketValueStr = pi.marketValue.toFixed(2);
-      pi.profitStr = (pi.profit >= 0 ? '+' : '') + pi.profit.toFixed(2);
-      pi.profitPctStr = (pi.profitPct >= 0 ? '+' : '') + pi.profitPct.toFixed(2);
-      if (pi.holdingDays > 0) {
-        pi.holdingDaysStr = '持有' + pi.holdingDays + '天';
-      }
-    }
-   this.setData({ portfolio: pf });
- },
  // ============ 基金加载 ============
 
   // ============ AI 分析 ============
@@ -346,14 +273,58 @@ Page({
         return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position, dailyPct);
       });
     }).then(function(result) {
-      if (result) { fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' }; fund.suggestDaily = result.suggestDaily || null; }
+      if (result) {
+        fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' };
+        fund.suggestDaily = result.suggestDaily || null;
+        // 将 raw news 标注利好/利空/中性标签
+        var labeled = result.labeled || {};
+        var rawNews = fund.news || {};
+        var mergedMap = {};
+        Object.keys(rawNews).forEach(function(code) {
+          var newsList = rawNews[code] || [];
+          var labels = labeled[code] || [];
+          mergedMap[code] = newsList.map(function(n, idx) {
+            var label = labels[idx] || { type: 'neutral', reason: '' };
+            var timeAgo = '';
+            if (n.time) {
+              var m = n.time.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+              if (m) {
+                var pubTime = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+                var diffH = (new Date() - pubTime) / 36e5;
+                if (diffH < 1) timeAgo = Math.round(diffH * 60) + '分钟前';
+                else if (diffH < 24) timeAgo = Math.round(diffH) + '小时前';
+                else timeAgo = Math.round(diffH / 24) + '天前';
+              } else if (n.date) { timeAgo = n.date; }
+            }
+            return {
+              title: n.title || n.text || '', column: n.column || '',
+              time: n.time || '', date: n.date || '', stale: n.stale || false,
+              timeAgo: timeAgo,
+              type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
+              reason: label.reason || ''
+            };
+          });
+        });
+        fund.news = mergedMap;
+        fund._aiStats = result.stats || null;
+        var aiSectors = result.relatedSectors || [];
+        fund._aiSectors = aiSectors;
+        fund._aiPowered = result.aiPowered || false;
+        // 将 AI 板块合并到关联板块区域
+        if (aiSectors.length > 0) {
+          var existingSectors = fund.holdings ? (fund.holdings.sectors || []) : [];
+          var merged = existingSectors.slice();
+          aiSectors.forEach(function(as) {
+            if (merged.indexOf(as.name) < 0) merged.push(as.name);
+          });
+          fund._mergedSectors = merged;
+        }
+      }
       fund._holdingsLoaded = true;
       self.applyFilter();
-      self.updatePortfolio();
     }).catch(function() {
       fund._holdingsLoaded = true;
       self.applyFilter();
-      self.updatePortfolio();
     });
   },
 
@@ -383,7 +354,6 @@ Page({
     Promise.all(tasks).then(function() {
      self.setData({ funds: app.globalData.funds, loading: false });
      self.applyFilter();
-     self.updatePortfolio();
       self.analyzeAllFunds();
    }).catch(function() { self.setData({ loading: false }); });
   },
@@ -452,7 +422,6 @@ Page({
       // 切换到对应类型的 tab
       self.setData({ activeTab: type, activeGroup: 'all' });
      self.applyFilter();
-     self.updatePortfolio();
       self.analyzeAllFunds();
      wx.showToast({ title: '添加成功', icon: 'success' });
     }).catch(function() {
@@ -485,201 +454,10 @@ Page({
     app.pushToCloud();
     this.setData({ showSwitchTypeModal: false });
     this.applyFilter();
-    this.updatePortfolio();
     wx.showToast({ title: type === 'position' ? '已移入持仓' : '已移入自选', icon: 'none', duration: 1000 });
   },
 
   // ============ 交易记录 ============
-
-  showTrade: function(e) {
-    var idx = e.currentTarget.dataset.index;
-    var fund = this.data.displayFunds[idx];
-    if (!fund) return;
-    var nav = parseFloat(fund.nav) || 0;
-    var trades = app.loadTrades(fund.code);
-    var pl = app.calcProfitLoss(fund.code, nav);
-    pl = app.applyPosOverrides(fund.code, nav, pl);
-    // 加载覆盖值到编辑字段
-    var ov = app.getPosOverride(fund.code);
-    // 格式化展示字符串
-    pl.sharesStr = pl.shares.toFixed(2);
-    pl.avgCostStr = pl.avgCost.toFixed(4);
-    pl.marketValueStr = pl.marketValue.toFixed(2);
-    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
-    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
-    // 交易记录格式化
-    var fmtTrades = [];
-    for (var i = 0; i < trades.length; i++) {
-      var t = trades[i];
-      fmtTrades.push({
-        id: t.id, date: t.date, type: t.type, shares: t.shares,
-        amountStr: t.amount.toFixed(0), nav: t.nav
-      });
-    }
-    var now = new Date();
-    this.setData({
-      showTradeModal: true,
-      tradeFundCode: fund.code,
-      tradeFundName: fund.name,
-      tradeFundNav: nav,
-      tradeRecords: fmtTrades,
-      tradeShares: '',
-      tradeAmount: '',
-      tradeType: 'buy',
-    tradeIsBefore3pm: true,
-      tradePl: pl,
-      editMarketValue: ov ? String(ov.marketValue.toFixed(2)) : '',
-      editProfit: ov ? String(ov.profit.toFixed(2)) : '',
-      editHoldingDays: ov ? String(ov.holdingDays) : '',
-      tradeIsBefore3pm: true,
-      tradeDate: now.getFullYear() + '-' +
-        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-        String(now.getDate()).padStart(2, '0')
-    });
-  },
-
-  hideTrade: function() { this.setData({ showTradeModal: false }); },
-
-  onTradeShares: function(e) { this.setData({ tradeShares: e.detail.value }); },
-  onTradeAmount: function(e) { this.setData({ tradeAmount: e.detail.value }); },
-  onTradeDateChange: function(e) { this.setData({ tradeDate: e.detail.value }); },
-  onTradeTime: function(e) { this.setData({ tradeIsBefore3pm: e.currentTarget.dataset.id === 'before' }); },
-  onTradeType: function(e) { this.setData({ tradeType: e.currentTarget.dataset.id }); },
-
-  onEditMarketValue: function(e) { this.setData({ editMarketValue: e.detail.value }); },
-  onEditProfit: function(e) { this.setData({ editProfit: e.detail.value }); },
-  onEditHoldingDays: function(e) { this.setData({ editHoldingDays: e.detail.value }); },
-
-  savePosOverride: function() {
-    var code = this.data.tradeFundCode;
-    var nav = parseFloat(this.data.tradeFundNav) || 0;
-    var mv = parseFloat(this.data.editMarketValue) || 0;
-    var pf = parseFloat(this.data.editProfit) || 0;
-    var daysStr = (this.data.editHoldingDays || '').trim();
-    var hasDays = daysStr !== '';
-    var days = hasDays ? parseInt(daysStr) : null;
-    if (mv <= 0) { wx.showToast({ title: '请输入持仓金额', icon: 'none' }); return; }
-    var override = { marketValue: mv, profit: pf };
-    if (hasDays) override.holdingDays = days;
-    app.setPosOverride(code, override);
-    app.pushToCloud();
-    // 刷新显示
-    var pl = app.calcProfitLoss(code, nav);
-    pl = app.applyPosOverrides(code, nav, pl);
-    pl.sharesStr = pl.shares.toFixed(2);
-    pl.avgCostStr = pl.avgCost.toFixed(4);
-    pl.marketValueStr = pl.marketValue.toFixed(2);
-    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
-    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
-    this.setData({ tradePl: pl });
-    this.applyFilter();
-    this.updatePortfolio();
-    wx.showToast({ title: '覆盖值已保存', icon: 'success', duration: 1000 });
-  },
-
-  clearPosOverride: function() {
-    var code = this.data.tradeFundCode;
-    var nav = parseFloat(this.data.tradeFundNav) || 0;
-    app.setPosOverride(code, null);
-    app.pushToCloud();
-    var pl = app.calcProfitLoss(code, nav);
-    pl.sharesStr = pl.shares.toFixed(2);
-    pl.avgCostStr = pl.avgCost.toFixed(4);
-    pl.marketValueStr = pl.marketValue.toFixed(2);
-    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
-    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
-    this.setData({
-      tradePl: pl,
-      editMarketValue: '',
-      editProfit: '',
-      editHoldingDays: ''
-    });
-    this.applyFilter();
-    this.updatePortfolio();
-    wx.showToast({ title: '已清除覆盖值', icon: 'none', duration: 1000 });
-  },
-
-  addTrade: function() {
-    var shares = parseFloat(this.data.tradeShares) || 0;
-    var amount = parseFloat(this.data.tradeAmount) || 0;
-    var date = this.data.tradeDate;
-    var type = this.data.tradeType;
-    var code = this.data.tradeFundCode;
-    var nav = parseFloat(this.data.tradeFundNav) || 0;
-
-    if (shares <= 0) { wx.showToast({ title: '请输入份额', icon: 'none' }); return; }
-    if (amount <= 0 && type === 'buy') { wx.showToast({ title: '请输入金额', icon: 'none' }); return; }
-    if (!date) { wx.showToast({ title: '请选择日期', icon: 'none' }); return; }
-
-    // 如果没填金额，用当前净值估算
-    if (amount <= 0 && nav > 0) {
-      amount = shares * nav;
-    }
-
-    var trade = {
-      date: date,
-      type: type,
-      shares: shares,
-      amount: amount,
-      nav: nav,
-      isBefore3pm: this.data.tradeIsBefore3pm,
-      id: 't_' + Date.now()
-    };
-
-    var trades = app.addTrade(code, trade);
-    app.pushToCloud();
-    var pl = app.calcProfitLoss(code, nav);
-    pl = app.applyPosOverrides(code, nav, pl);
-    pl.sharesStr = pl.shares.toFixed(2);
-    pl.avgCostStr = pl.avgCost.toFixed(4);
-    pl.marketValueStr = pl.marketValue.toFixed(2);
-    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
-    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
-    var fmtTrades = [];
-    for (var i = 0; i < trades.length; i++) {
-      var t = trades[i];
-      fmtTrades.push({
-        id: t.id, date: t.date, type: t.type, shares: t.shares,
-        amountStr: t.amount.toFixed(0), nav: t.nav
-      });
-    }
-
-    this.setData({
-      tradeRecords: fmtTrades,
-      tradePl: pl,
-      tradeShares: '',
-      tradeAmount: ''
-    });
-    this.applyFilter();
-    this.updatePortfolio();
-    wx.showToast({ title: '记录成功', icon: 'success', duration: 1000 });
-  },
-
-  deleteTrade: function(e) {
-    var idx = e.currentTarget.dataset.index;
-    var code = this.data.tradeFundCode;
-    var nav = parseFloat(this.data.tradeFundNav) || 0;
-    var trades = app.deleteTrade(code, idx);
-    app.pushToCloud();
-    var pl = app.calcProfitLoss(code, nav);
-    pl = app.applyPosOverrides(code, nav, pl);
-    pl.sharesStr = pl.shares.toFixed(2);
-    pl.avgCostStr = pl.avgCost.toFixed(4);
-    pl.marketValueStr = pl.marketValue.toFixed(2);
-    pl.profitStr = (pl.profit >= 0 ? '+' : '') + pl.profit.toFixed(2);
-    pl.profitPctStr = (pl.profitPct >= 0 ? '+' : '') + pl.profitPct.toFixed(2);
-    var fmtTrades = [];
-    for (var i = 0; i < trades.length; i++) {
-      var t = trades[i];
-      fmtTrades.push({
-        id: t.id, date: t.date, type: t.type, shares: t.shares,
-        amountStr: t.amount.toFixed(0), nav: t.nav
-      });
-    }
-    this.setData({ tradeRecords: fmtTrades, tradePl: pl });
-    this.applyFilter();
-    this.updatePortfolio();
-  },
 
   // ============ 移动分组 ============
 
@@ -734,19 +512,11 @@ Page({
    var types = app.loadFundTypes();
    delete types[code];
    app.saveFundTypes(types);
-  // 清理 fund_trades
-  var allTrades = wx.getStorageSync('fund_trades') || {};
-  if (allTrades[code]) {
-    delete allTrades[code];
-    wx.setStorageSync('fund_trades', allTrades);
-    app._touch('trades');
-  }
    // 清理 position_overrides
    app.setPosOverride(code, null);
    app.pushToCloud();
    this.setData({ funds: allFunds, showDeleteModal: false });
    this.applyFilter();
-   this.updatePortfolio();
    wx.showToast({ title: '已删除', icon: 'none' });
  },
 
@@ -852,7 +622,6 @@ Page({
         app.globalData.groupMap = app.loadGroupMap();
         self.buildGroupTabs();
         self.applyFilter();
-        self.updatePortfolio();
         wx.showToast({ title: '同步成功', icon: 'success', duration: 1000 });
       } else {
         wx.showToast({ title: result.error || '同步失败', icon: 'none' });
@@ -887,224 +656,5 @@ Page({
     });
   },
 
-  // ============ 定投计划弹窗 ============
 
-  showPlan: function(e) {
-    var idx = e.currentTarget.dataset.index;
-    var fund = this.data.displayFunds[idx];
-    if (!fund) return;
-    var nav = parseFloat(fund.nav) || 0;
-    var plans = app.getFundPlans(fund.code);
-    // 格式化展示
-    for (var i = 0; i < plans.length; i++) {
-      var p = plans[i];
-      p._periodLabel = this._getPeriodLabel(p);
-      if (p.lastExecuted) {
-        p._lastLabel = '上次执行: ' + p.lastExecuted;
-      } else {
-        p._lastLabel = '尚未执行';
-      }
-    }
-    this.setData({
-      showPlanModal: true,
-      planFundCode: fund.code,
-      planFundName: fund.name,
-      planFundNav: nav,
-      fundPlans: plans,
-      planEditId: '',
-      planAmount: '',
-      planPeriod: 'weekly',
-      planDayOfWeek: 1,
-      planDayOfMonth: 1
-    });
-  },
-
-  hidePlan: function() { this.setData({ showPlanModal: false }); },
-
-  _getPeriodLabel: function(plan) {
-    var weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    switch (plan.period) {
-      case 'daily': return '每日';
-      case 'weekly': return '每周 ' + weekNames[plan.dayOfWeek];
-      case 'biweekly': return '每两周 ' + weekNames[plan.dayOfWeek];
-      case 'monthly': return '每月 ' + plan.dayOfMonth + ' 日';
-    }
-    return '';
-  },
-
-  onPlanAmount: function(e) { this.setData({ planAmount: e.detail.value }); },
-  onPlanPeriod: function(e) {
-    var id = e.currentTarget.dataset.id;
-    this.setData({ planPeriod: id });
-  },
-  onPlanDayOfWeek: function(e) {
-    var day = parseInt(e.currentTarget.dataset.id);
-    this.setData({ planDayOfWeek: day });
-  },
-  onPlanDayOfMonth: function(e) {
-    var day = parseInt(e.currentTarget.dataset.id);
-    this.setData({ planDayOfMonth: day });
-  },
-
-  addPlan: function() {
-    var amount = parseFloat(this.data.planAmount) || 0;
-    var period = this.data.planPeriod;
-    var code = this.data.planFundCode;
-
-    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
-
-    var now = new Date();
-    var createdAt = now.getFullYear() + '-' +
-      String(now.getMonth() + 1).padStart(2, '0') + '-' +
-      String(now.getDate()).padStart(2, '0');
-
-    var plan = {
-      id: 'p_' + Date.now(),
-      fundCode: code,
-      fundName: this.data.planFundName,
-      amount: amount,
-      period: period,
-      dayOfWeek: this.data.planDayOfWeek,
-      dayOfMonth: this.data.planDayOfMonth,
-      createdAt: createdAt,
-      lastExecuted: null,
-      active: true
-    };
-
-    app.addPlan(plan);
-    app.pushToCloud();
-    // 刷新计划列表
-    var plans = app.getFundPlans(code);
-    for (var i = 0; i < plans.length; i++) {
-      var p = plans[i];
-      p._periodLabel = this._getPeriodLabel(p);
-      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
-    }
-    this.setData({
-      fundPlans: plans,
-      planAmount: ''
-    });
-    wx.showToast({ title: '定投计划已创建', icon: 'success', duration: 1000 });
-  },
-
-  editPlan: function(e) {
-    var id = e.currentTarget.dataset.id;
-    var plans = this.data.fundPlans;
-    var plan = null;
-    for (var i = 0; i < plans.length; i++) {
-      if (plans[i].id === id) { plan = plans[i]; break; }
-    }
-    if (!plan) return;
-    this.setData({
-      planEditId: id,
-      planAmount: String(plan.amount),
-      planPeriod: plan.period,
-      planDayOfWeek: plan.dayOfWeek,
-      planDayOfMonth: plan.dayOfMonth
-    });
-  },
-
-  cancelEdit: function() {
-    this.setData({
-      planEditId: '',
-      planAmount: '',
-      planPeriod: 'weekly',
-      planDayOfWeek: 1,
-      planDayOfMonth: 1
-    });
-  },
-
-  updatePlan: function() {
-    var amount = parseFloat(this.data.planAmount) || 0;
-    if (amount <= 0) { wx.showToast({ title: '请输入每期金额', icon: 'none' }); return; }
-    app.updatePlan(this.data.planEditId, {
-      amount: amount,
-      period: this.data.planPeriod,
-      dayOfWeek: this.data.planDayOfWeek,
-      dayOfMonth: this.data.planDayOfMonth
-    });
-    app.pushToCloud();
-    var plans = app.getFundPlans(this.data.planFundCode);
-    for (var i = 0; i < plans.length; i++) {
-      var p = plans[i];
-      p._periodLabel = this._getPeriodLabel(p);
-      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
-    }
-    this.setData({
-      fundPlans: plans,
-      planEditId: '',
-      planAmount: ''
-    });
-    wx.showToast({ title: '计划已更新', icon: 'success', duration: 1000 });
-  },
-
-  deletePlan: function(e) {
-    var id = e.currentTarget.dataset.id;
-    var self = this;
-    wx.showModal({
-      title: '删除定投计划',
-      content: '确定要删除该定投计划吗？',
-      success: function(res) {
-        if (res.confirm) {
-          app.deletePlan(id);
-          app.pushToCloud();
-          var plans = app.getFundPlans(self.data.planFundCode);
-          for (var i = 0; i < plans.length; i++) {
-            var p = plans[i];
-            p._periodLabel = self._getPeriodLabel(p);
-            p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
-          }
-          self.setData({ fundPlans: plans });
-          wx.showToast({ title: '已删除', icon: 'none', duration: 1000 });
-        }
-      }
-    });
-  },
-
-  togglePlanActive: function(e) {
-    var id = e.currentTarget.dataset.id;
-    var plans = this.data.fundPlans;
-    var active = true;
-    for (var i = 0; i < plans.length; i++) {
-      if (plans[i].id === id) {
-        active = !plans[i].active;
-        break;
-      }
-    }
-    app.updatePlan(id, { active: active });
-    app.pushToCloud();
-    var updated = app.getFundPlans(this.data.planFundCode);
-    for (var j = 0; j < updated.length; j++) {
-      var p = updated[j];
-      p._periodLabel = this._getPeriodLabel(p);
-      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
-    }
-    this.setData({ fundPlans: updated });
-  },
-
-  executePlanNow: function(e) {
-    var id = e.currentTarget.dataset.id;
-    var all = app.loadPlans();
-    var plan = null;
-    for (var i = 0; i < all.length; i++) {
-      if (all[i].id === id) { plan = all[i]; break; }
-    }
-    if (!plan) return;
-    // 临时覆盖：强制今天执行
-    plan._forceExec = true;
-    var executed = app._executePlan(plan);
-    if (executed) {
-      app.pushToCloud();
-      this.applyFilter();
-      this.updatePortfolio();
-    }
-    var plans = app.getFundPlans(this.data.planFundCode);
-    for (var j = 0; j < plans.length; j++) {
-      var p = plans[j];
-      p._periodLabel = this._getPeriodLabel(p);
-      p._lastLabel = p.lastExecuted ? '上次执行: ' + p.lastExecuted : '尚未执行';
-    }
-    this.setData({ fundPlans: plans });
-    wx.showToast({ title: executed ? '已执行定投' : '今日已执行过', icon: executed ? 'success' : 'none', duration: 1000 });
-  },
 });

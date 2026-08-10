@@ -135,17 +135,6 @@ page {
 }
 
 /* ========== 交易记录按钮 ========== */
-.d-trade-btn {
-  margin-top: 20rpx;
-  padding: 14rpx 32rpx;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--accent);
-  background: rgba(212,168,83,0.12);
-  border: 1px solid rgba(212,168,83,0.3);
-  border-radius: 16rpx;
-  text-align: center;
-  width: fit-content;
 }
 
 /* ========== 交易记录弹窗 ========== */

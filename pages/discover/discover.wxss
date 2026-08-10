@@ -37,12 +37,12 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 }
 .sr-info { flex: 1; min-width: 0; }
 .sr-code { font-size: 22rpx; color: var(--text-dim); display: block; letter-spacing: 2rpx; }
-.sr-name { font-size: 28rpx; font-weight: 600; display: block; margin-top: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-name { font-size: 28rpx; font-weight: 600;display: block; margin-top: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-type { font-size: 20rpx; color: var(--text-dim); margin-top: 4rpx; }
 .sr-add {
   padding: 12rpx 24rpx; background: rgba(212,168,83,0.15);
   color: var(--accent); border-radius: 20rpx; font-size: 24rpx;
-  font-weight: 600; flex-shrink: 0; border: 1px solid rgba(212,168,83,0.3);
+  font-weight: 600;flex-shrink: 0; border: 1px solid rgba(212,168,83,0.3);
 }
 .sr-added {
   font-size: 24rpx; color: var(--text-dim); flex-shrink: 0;
@@ -62,11 +62,12 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 }
 .filter-tab-active {
   background: var(--accent); color: #000; border-color: var(--accent);
-  font-weight: 600; margin-right: 0;
+  font-weight: 600;
 }
 
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
+  position: relative; z-index: 70;
   padding: 0 32rpx 12rpx;
 }
 .sort-trigger {
@@ -78,7 +79,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 .sort-arrow { font-size: 18rpx; color: var(--text-dim); margin-left: 4rpx; }
 
 .sort-dropdown {
-  position: absolute; top: 340rpx; left: 32rpx; z-index: 60;
+  position: absolute; top: calc(100% - 4rpx); left: 0; z-index: 60;
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 16rpx; overflow: hidden;
   box-shadow: 0 8rpx 32rpx rgba(0,0,0,0.4);
@@ -90,7 +91,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   border-bottom: 1px solid var(--border);
 }
 .sort-option:last-child { border-bottom: none; }
-.sort-option-active { color: var(--accent); font-weight: 600; background: rgba(212,168,83,0.06); }
+.sort-option-active { color: var(--accent); font-weight: 600;background: rgba(212,168,83,0.06); }
 .sort-check { font-size: 24rpx; }
 
 .state-box { text-align: center; padding: 240rpx 0; }
@@ -100,13 +101,13 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 .retry-btn {
   display: inline-block; margin-top: 36rpx; padding: 18rpx 56rpx;
   background: var(--accent); color: #000; border-radius: 40rpx;
-  font-weight: 600; font-size: 28rpx;
+  font-weight: 600;font-size: 28rpx;
 }
 
 .card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 24rpx; padding: 16rpx 28rpx 10rpx;
-  margin: 0 32rpx 16rpx;
+  margin: 0 16rpx 16rpx;
   transition: all 0.2s;
 }
 .card:active { opacity: 0.85; transform: scale(0.985); }
@@ -120,7 +121,7 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 }
 .card-right { text-align: right; flex-shrink: 0; margin-left: 16rpx; display: flex; flex-direction: column; gap: 0; }
 .card-nav { font-size: 34rpx; font-weight: 700; line-height: 1.1; }
-.card-daily { font-size: 26rpx; font-weight: 600; line-height: 1.1; margin-top: 0; }
+.card-daily { font-size: 26rpx; font-weight: 600;line-height: 1.1; margin-top: 0; }
 
 .card-perf {
   display: flex; gap: 12rpx; padding: 6rpx 0;
@@ -160,3 +161,10 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 .bb-icon { font-size: 36rpx; }
 .bb-label { font-size: 30rpx; color: var(--text-dim); font-weight: 500; }
 .bb-active .bb-label { color: var(--accent); font-weight: 700; }
+
+.filter-tab-spacer {
+  display: inline-block;
+  width: 24rpx;
+  height: 1rpx;
+  flex-shrink: 0;
+}
