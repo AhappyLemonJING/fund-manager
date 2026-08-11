@@ -494,11 +494,24 @@ Page({
   loadNewsForStocks: function(stocks) {
     var self = this;
     self.setData({ loadingNews: true, newsError: '' });
-    var tasks = stocks.map(function(s) {
-      return app.fetchStockNews(s.code, s.name).then(function(news) { return { code: s.code, news: news }; })
-        .catch(function() { return { code: s.code, news: [] }; });
-    });
-    Promise.all(tasks).then(function(results) {
+    // 分批抓取股票新闻，每批最多 5 只并行，避免云函数请求数超限
+    function batchFetchNews(list, batchSize) {
+      var results = [];
+      function nextBatch(start) {
+        if (start >= list.length) return Promise.resolve(results);
+        var batch = list.slice(start, start + batchSize);
+        return Promise.all(batch.map(function(s) {
+          return app.fetchStockNews(s.code, s.name).then(function(news) {
+            return { code: s.code, news: news };
+          }).catch(function() { return { code: s.code, news: [] }; });
+        })).then(function(batchResults) {
+          results = results.concat(batchResults);
+          return nextBatch(start + batchSize);
+        });
+      }
+      return nextBatch(0);
+    }
+    batchFetchNews(stocks, 5).then(function(results) {
       var newsMap = {};
       results.forEach(function(r) { newsMap[r.code] = r.news; });
       self.setData({ newsMap: newsMap, loadingNews: false });
@@ -573,75 +586,50 @@ Page({
    self.setData({ loadingAnalysis: true });
     var code = self._fundCode;
     var nav = parseFloat(self.data.nav) || 0;
-    // 并行获取净值走势和持仓盈亏
-    var navPromise = app.fetchHistory(code, 132).then(function(histData) {
-      if (!histData || histData.length < 2) return null;
-      function pctChange(start, end) {
-        if (end >= histData.length) return null;
-        return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
-      }
-      var len = histData.length;
-      return {
-        '1m': pctChange(Math.max(0, len - 22), len - 1),
-        '3m': pctChange(Math.max(0, len - 66), len - 1),
-        '6m': pctChange(0, len - 1)
-      };
-    }).catch(function() { return null; });
-    var pl = app.calcProfitLoss(code, nav);
-    pl = app.applyPosOverrides(code, nav, pl);
-    var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
-    Promise.all([navPromise]).then(function(results) {
-      var navTrend = results[0];
-      var dailyPct = self.data.changePct != null ? parseFloat(self.data.changePct) : null;
-      return app.analyzeNews(stocks, newsMap, self.data.name, navTrend, position, dailyPct);
-    }).then(function(result) {
-      if (!result) return;
-      var labeled = result.labeled || {};
-      var mergedMap = {};
-      Object.keys(newsMap).forEach(function(code) {
-        var newsList = newsMap[code] || [];
-        var labels = labeled[code] || [];
-        mergedMap[code] = newsList.map(function(n, idx) {
-          var label = labels[idx] || { type: 'neutral', reason: '' };
-          var timeAgo = '';
-          if (n.time) {
-            var m = n.time.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-            if (m) {
-              var pubTime = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-              var diffH = (new Date() - pubTime) / 36e5;
-              if (diffH < 1) timeAgo = Math.round(diffH * 60) + '分钟前';
-              else if (diffH < 24) timeAgo = Math.round(diffH) + '小时前';
-              else timeAgo = Math.round(diffH / 24) + '天前';
-            } else if (n.date) { timeAgo = n.date; }
-          }
-          return {
-            title: n.title || n.text || '', column: n.column || '',
-            type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
-            reason: label.reason || '', timeAgo: timeAgo, stale: n.stale || false
-          };
-        });
+
+    // 优先复用首页分析缓存，避免重复调用云函数
+    var cachedFund = app.globalData.funds[self._fundIndex];
+    if (cachedFund && cachedFund.suggestion && cachedFund._aiPowered) {
+      self.setData({
+        suggest: cachedFund.suggestion,
+        suggestDaily: cachedFund.suggestDaily || null,
+        aiPowered: true,
+        loadingAnalysis: false
       });
-      var suggest = result.suggest || { action: 'hold', reason: '暂无分析' };
-      var suggestDaily = result.suggestDaily || null;
-      self.setData({ newsMap: mergedMap, suggest: suggest, suggestDaily: suggestDaily, stats: result.stats || null, aiPowered: result.aiPowered || false, loadingAnalysis: false });
-      var aiSectors = result.relatedSectors || [];
-      if (aiSectors.length > 0) {
-        self.setData({ aiSectors: aiSectors });
-        // 将 AI 分析的板块名合并到上方关联板块标签区（去重）
-        var existingSectors = self.data.sectors || [];
-        var merged = existingSectors.slice();
-        aiSectors.forEach(function(as) {
-          if (merged.indexOf(as.name) < 0) merged.push(as.name);
-        });
-        self.setData({ sectors: merged });
-        self.loadSectorNews(aiSectors);
-      }
       self.applySuggestion();
+      return;
+    }
+
+    // 轮询等待首页分析完成，避免重复调用云函数
+    var pollCount = 0;
+    var maxPoll = 60; // 最多等 60 秒
+    var pollTimer = setInterval(function() {
       var fund = app.globalData.funds[self._fundIndex];
-      if (fund) { fund.news = mergedMap; fund.suggestion = suggest; fund.suggestDaily = suggestDaily; fund._holdingsLoaded = true; fund._aiStats = result.stats || null; fund._aiSectors = aiSectors; fund._aiPowered = result.aiPowered || false; }
-    }).catch(function(err) {
-      self.setData({ loadingAnalysis: false });
-    });
+      pollCount++;
+      if (fund && fund.suggestion && fund._aiPowered) {
+        clearInterval(pollTimer);
+        self.setData({
+          suggest: fund.suggestion,
+          suggestDaily: fund.suggestDaily || null,
+          aiPowered: true,
+          loadingAnalysis: false
+        });
+        if (fund._aiSectors && fund._aiSectors.length > 0) {
+          self.setData({ aiSectors: fund._aiSectors });
+          var existingSectors = self.data.sectors || [];
+          var merged = existingSectors.slice();
+          fund._aiSectors.forEach(function(as) {
+            if (merged.indexOf(as.name) < 0) merged.push(as.name);
+          });
+          self.setData({ sectors: merged });
+          self.loadSectorNews(fund._aiSectors);
+        }
+        self.applySuggestion();
+      } else if (pollCount >= maxPoll) {
+        clearInterval(pollTimer);
+        self.setData({ loadingAnalysis: false });
+      }
+    }, 1000);
   },
 
   applySuggestion: function() {
