@@ -587,7 +587,7 @@ Page({
     var code = self._fundCode;
     var nav = parseFloat(self.data.nav) || 0;
 
-    // 优先复用首页分析缓存，避免重复调用云函数
+    // 优先复用首页分析缓存
     var cachedFund = app.globalData.funds[self._fundIndex];
     if (cachedFund && cachedFund.suggestion && cachedFund._aiPowered) {
       self.setData({
@@ -600,9 +600,8 @@ Page({
       return;
     }
 
-    // 轮询等待首页分析完成，避免重复调用云函数
+    // 轮询等待首页分析完成
     var pollCount = 0;
-    var maxPoll = 60; // 最多等 60 秒
     var pollTimer = setInterval(function() {
       var fund = app.globalData.funds[self._fundIndex];
       pollCount++;
@@ -625,7 +624,7 @@ Page({
           self.loadSectorNews(fund._aiSectors);
         }
         self.applySuggestion();
-      } else if (pollCount >= maxPoll) {
+      } else if (pollCount >= 60) {
         clearInterval(pollTimer);
         self.setData({ loadingAnalysis: false });
       }
