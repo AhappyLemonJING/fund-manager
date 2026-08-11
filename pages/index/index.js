@@ -334,11 +334,10 @@ Page({
     var positionFunds = funds.filter(function(f) {
       return app.getFundType(f.code) === 'position';
     });
-    var chain = Promise.resolve();
-    positionFunds.forEach(function(f) {
-      chain = chain.then(function() { return self.analyzeFundIfNeeded(f); });
+    var tasks = positionFunds.map(function(f) {
+      return self.analyzeFundIfNeeded(f);
     });
-    return chain;
+    return Promise.all(tasks);
   },
 
   loadFunds: function(codes) {
