@@ -254,11 +254,28 @@ Page({
           '6m': pctChange(0, len - 1)
         };
       }).catch(function() { return null; });
-      return Promise.all(stocks.map(function(s) {
-        return app.fetchStockNews(s.code, s.name).then(function(news) {
-          return { code: s.code, news: news };
-        }).catch(function() { return { code: s.code, news: [] }; });
-      }).concat([navPromise])).then(function(results) {
+      // 分批抓取股票新闻，每批最多 5 只并行，避免云函数请求数超限
+      function batchFetchNews(list, batchSize) {
+        var results = [];
+        function nextBatch(start) {
+          if (start >= list.length) return Promise.resolve(results);
+          var batch = list.slice(start, start + batchSize);
+          return Promise.all(batch.map(function(s) {
+            return app.fetchStockNews(s.code, s.name).then(function(news) {
+              return { code: s.code, news: news };
+            }).catch(function() { return { code: s.code, news: [] }; });
+          })).then(function(batchResults) {
+            results = results.concat(batchResults);
+            return nextBatch(start + batchSize);
+          });
+        }
+        return nextBatch(0).then(function() { return results; });
+      }
+      var newsPromise = batchFetchNews(stocks, 5);
+      return Promise.all([newsPromise, navPromise]).then(function(resolved) {
+        var newsResults = resolved[0];
+        var results = newsResults.concat([resolved[1]]);
+        
         var newsMap = {};
         var navTrend = null;
         results.forEach(function(r) {
@@ -334,10 +351,25 @@ Page({
     var positionFunds = funds.filter(function(f) {
       return app.getFundType(f.code) === 'position';
     });
-    var tasks = positionFunds.map(function(f) {
-      return self.analyzeFundIfNeeded(f);
-    });
-    return Promise.all(tasks);
+    // 并发控制：每次最多同时分析 MAX_CONCURRENT 只基金，避免云函数请求数超限
+    var MAX_CONCURRENT = 1;
+    var results = [];
+    var index = 0;
+
+    function next() {
+      if (index >= positionFunds.length) return Promise.resolve();
+      var i = index++;
+      return self.analyzeFundIfNeeded(positionFunds[i]).then(function(r) {
+        results[i] = r;
+        return next();
+      });
+    }
+
+    var workers = [];
+    for (var w = 0; w < Math.min(MAX_CONCURRENT, positionFunds.length); w++) {
+      workers.push(next());
+    }
+    return Promise.all(workers).then(function() { return results; });
   },
 
   loadFunds: function(codes) {
