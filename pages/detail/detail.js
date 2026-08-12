@@ -481,7 +481,11 @@ Page({
         var stocks = (data && data.stocks) || [];
         self.setData({ sectors: sectors, stocks: stocks, loadingHoldings: false });
         if (fund) fund.holdings = { sectors: sectors, stocks: stocks };
-        if (stocks.length > 0) self.loadNewsForStocks(stocks);
+        if (stocks.length > 0) {
+          self.loadNewsForStocks(stocks);
+        } else if (fund) {
+          fund._holdingsLoaded = true;
+        }
       }
       if (!self.data.chartData) self.loadChart('1M');
     }).catch(function(err) {
@@ -584,51 +588,132 @@ Page({
  runAnalyze: function(stocks, newsMap) {
    var self = this;
    self.setData({ loadingAnalysis: true });
-    var code = self._fundCode;
-    var nav = parseFloat(self.data.nav) || 0;
+   var code = self._fundCode;
+   var nav = parseFloat(self.data.nav) || 0;
+   var cachedFund = app.globalData.funds[self._fundIndex];
 
-    // 优先复用首页分析缓存
-    var cachedFund = app.globalData.funds[self._fundIndex];
+    // 已有分析结果时直接展示，不再触发云函数
     if (cachedFund && cachedFund.suggestion && cachedFund._aiPowered) {
       self.setData({
+        newsMap: cachedFund.news || self.data.newsMap || {},
         suggest: cachedFund.suggestion,
         suggestDaily: cachedFund.suggestDaily || null,
+        stats: cachedFund._aiStats || null,
         aiPowered: true,
+        aiSectors: cachedFund._aiSectors || [],
+        sectors: cachedFund._mergedSectors || self.data.sectors || [],
         loadingAnalysis: false
       });
       self.applySuggestion();
+      if (cachedFund._aiSectors && cachedFund._aiSectors.length > 0) {
+        self.loadSectorNews(cachedFund._aiSectors);
+      }
       return;
     }
 
-    // 轮询等待首页分析完成
-    var pollCount = 0;
-    var pollTimer = setInterval(function() {
-      var fund = app.globalData.funds[self._fundIndex];
-      pollCount++;
-      if (fund && fund.suggestion && fund._aiPowered) {
-        clearInterval(pollTimer);
-        self.setData({
-          suggest: fund.suggestion,
-          suggestDaily: fund.suggestDaily || null,
-          aiPowered: true,
-          loadingAnalysis: false
-        });
-        if (fund._aiSectors && fund._aiSectors.length > 0) {
-          self.setData({ aiSectors: fund._aiSectors });
-          var existingSectors = self.data.sectors || [];
-          var merged = existingSectors.slice();
-          fund._aiSectors.forEach(function(as) {
-            if (merged.indexOf(as.name) < 0) merged.push(as.name);
-          });
-          self.setData({ sectors: merged });
-          self.loadSectorNews(fund._aiSectors);
-        }
-        self.applySuggestion();
-      } else if (pollCount >= 60) {
-        clearInterval(pollTimer);
-        self.setData({ loadingAnalysis: false });
+    if (!stocks || stocks.length === 0) {
+      if (cachedFund) cachedFund._holdingsLoaded = true;
+      self.setData({ loadingAnalysis: false });
+      return;
+    }
+
+    app.fetchHistory(code, 132).then(function(histData) {
+      if (!histData || histData.length < 2) return null;
+      function pctChange(start, end) {
+        if (end >= histData.length) return null;
+        return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
       }
-    }, 1000);
+      var len = histData.length;
+      return {
+        '1m': pctChange(Math.max(0, len - 22), len - 1),
+        '3m': pctChange(Math.max(0, len - 66), len - 1),
+        '6m': pctChange(0, len - 1)
+      };
+    }).catch(function() { return null; }).then(function(navTrend) {
+      var pl = app.calcProfitLoss(code, nav);
+      pl = app.applyPosOverrides(code, nav, pl);
+      var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
+      var dailyPct = parseFloat(self.data.changePct) || null;
+      return app.analyzeNews(stocks, newsMap, cachedFund && cachedFund.name, navTrend, position, dailyPct);
+    }).then(function(result) {
+      var fund = app.globalData.funds[self._fundIndex];
+      if (!result) {
+        if (fund) fund._holdingsLoaded = true;
+        self.setData({ loadingAnalysis: false });
+        return;
+      }
+
+      var suggestion = result.suggest || { action: 'hold', reason: '暂无分析' };
+      var aiSectors = result.relatedSectors || [];
+      var labeled = result.labeled || {};
+      var mergedMap = {};
+
+      Object.keys(newsMap).forEach(function(stockCode) {
+        var newsList = newsMap[stockCode] || [];
+        var labels = labeled[stockCode] || [];
+        mergedMap[stockCode] = newsList.map(function(n, idx) {
+          var label = labels[idx] || { type: 'neutral', reason: '' };
+          var timeAgo = '';
+          if (n.time) {
+            var m = n.time.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (m) {
+              var pubTime = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+              var diffH = (new Date() - pubTime) / 36e5;
+              if (diffH < 1) timeAgo = Math.round(diffH * 60) + '分钟前';
+              else if (diffH < 24) timeAgo = Math.round(diffH) + '小时前';
+              else timeAgo = Math.round(diffH / 24) + '天前';
+            } else if (n.date) {
+              timeAgo = n.date;
+            }
+          }
+          return {
+            title: n.title || n.text || '',
+            column: n.column || '',
+            time: n.time || '',
+            date: n.date || '',
+            stale: n.stale || false,
+            timeAgo: timeAgo,
+            type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
+            reason: label.reason || ''
+          };
+        });
+      });
+
+      var existingSectors = self.data.sectors || [];
+      var mergedSectors = existingSectors.slice();
+      aiSectors.forEach(function(as) {
+        if (mergedSectors.indexOf(as.name) < 0) mergedSectors.push(as.name);
+      });
+
+      if (fund) {
+        fund.suggestion = suggestion;
+        fund.suggestDaily = result.suggestDaily || null;
+        fund.news = mergedMap;
+        fund._aiStats = result.stats || null;
+        fund._aiSectors = aiSectors;
+        fund._aiPowered = result.aiPowered || false;
+        fund._mergedSectors = mergedSectors;
+        fund._holdingsLoaded = true;
+      }
+
+      self.setData({
+        newsMap: mergedMap,
+        sectors: mergedSectors,
+        suggest: suggestion,
+        suggestDaily: result.suggestDaily || null,
+        stats: result.stats || null,
+        aiPowered: result.aiPowered || false,
+        aiSectors: aiSectors,
+        loadingAnalysis: false
+      });
+      self.applySuggestion();
+      if (aiSectors.length > 0) self.loadSectorNews(aiSectors);
+    }).catch(function(err) {
+      console.error('AI analysis failed:', err);
+      var fund = app.globalData.funds[self._fundIndex];
+      if (fund) fund._holdingsLoaded = true;
+      self.setData({ loadingAnalysis: false });
+    });
   },
 
   applySuggestion: function() {
