@@ -634,7 +634,7 @@ Page({
       pl = app.applyPosOverrides(code, nav, pl);
       var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
       var dailyPct = parseFloat(self.data.changePct) || null;
-      return app.analyzeNews(stocks, newsMap, cachedFund && cachedFund.name, navTrend, position, dailyPct);
+      return app.analyzeNews(stocks, newsMap, cachedFund && cachedFund.name, navTrend, position, dailyPct, code);
     }).then(function(result) {
       var fund = app.globalData.funds[self._fundIndex];
       if (!result) {
