@@ -19,7 +19,7 @@
     "ignore": [],
     "include": []
   },
-  "appid": "wx40b1d5c7fa4b13ed",
+  "appid": "xxxxxxxxxyour_app_id",
   "editorSetting": {},
   "cloudfunctionRoot": "cloudfunctions/",
   "cloud": true
