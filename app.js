@@ -562,6 +562,7 @@ App({
     if (arguments.length > 3 && arguments[3]) data.navTrend = arguments[3];
     if (arguments.length > 4 && arguments[4]) data.position = arguments[4];
     if (arguments.length > 5 && arguments[5] != null) data.dailyChangePct = arguments[5];
+    if (arguments.length > 6 && arguments[6]) data.fundCode = arguments[6];
     return wx.cloud.callFunction({
       name: 'analyze',
       data: data

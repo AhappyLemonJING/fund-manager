@@ -73,7 +73,6 @@ Page({
    if (app.globalData.funds.length > 0) {
      this.setData({ funds: app.globalData.funds });
      this.applyFilter();
-       this.analyzeAllFunds();
    }
   },
 
@@ -226,152 +225,6 @@ Page({
 
  // ============ 基金加载 ============
 
-  // ============ AI 分析 ============
-
- analyzeFundIfNeeded: function(fund) {
-   var self = this;
-   if (fund._holdingsLoaded) return Promise.resolve();
-   var code = fund.code;
-    var nav = parseFloat(fund.nav) || 0;
-   return app.fetchHoldings(code).then(function(data) {
-     var stocks = (data && data.stocks) || [];
-     fund.holdings = { sectors: (data && data.sectors) || [], stocks: stocks };
-     if (stocks.length === 0) {
-       fund._holdingsLoaded = true;
-       return null;
-     }
-      // 并行获取净值走势
-      var navPromise = app.fetchHistory(code, 132).then(function(histData) {
-        if (!histData || histData.length < 2) return null;
-        function pctChange(start, end) {
-          if (end >= histData.length) return null;
-          return ((histData[end].nav - histData[start].nav) / histData[start].nav) * 100;
-        }
-        var len = histData.length;
-        return {
-          '1m': pctChange(Math.max(0, len - 22), len - 1),
-          '3m': pctChange(Math.max(0, len - 66), len - 1),
-          '6m': pctChange(0, len - 1)
-        };
-      }).catch(function() { return null; });
-      // 分批抓取股票新闻，每批最多 5 只并行，避免云函数请求数超限
-      function batchFetchNews(list, batchSize) {
-        var results = [];
-        function nextBatch(start) {
-          if (start >= list.length) return Promise.resolve(results);
-          var batch = list.slice(start, start + batchSize);
-          return Promise.all(batch.map(function(s) {
-            return app.fetchStockNews(s.code, s.name).then(function(news) {
-              return { code: s.code, news: news };
-            }).catch(function() { return { code: s.code, news: [] }; });
-          })).then(function(batchResults) {
-            results = results.concat(batchResults);
-            return nextBatch(start + batchSize);
-          });
-        }
-        return nextBatch(0).then(function() { return results; });
-      }
-      var newsPromise = batchFetchNews(stocks, 5);
-      return Promise.all([newsPromise, navPromise]).then(function(resolved) {
-        var newsResults = resolved[0];
-        var results = newsResults.concat([resolved[1]]);
-        
-        var newsMap = {};
-        var navTrend = null;
-        results.forEach(function(r) {
-          if (r && r.code) newsMap[r.code] = r.news;
-          else if (r && typeof r['1m'] !== 'undefined') navTrend = r;
-        });
-        fund.news = newsMap;
-        var pl = app.calcProfitLoss(code, nav);
-        pl = app.applyPosOverrides(code, nav, pl);
-        var position = nav > 0 && pl.shares > 0 ? { profitPct: pl.profitPct, holdingDays: pl.holdingDays } : null;
-        var dailyPct = parseFloat(fund.changePct) || null;
-        return app.analyzeNews(stocks, newsMap, fund.name, navTrend, position, dailyPct);
-      });
-    }).then(function(result) {
-      if (result) {
-        fund.suggestion = result.suggest || { action: 'hold', reason: '暂无分析' };
-        fund.suggestDaily = result.suggestDaily || null;
-        // 将 raw news 标注利好/利空/中性标签
-        var labeled = result.labeled || {};
-        var rawNews = fund.news || {};
-        var mergedMap = {};
-        Object.keys(rawNews).forEach(function(code) {
-          var newsList = rawNews[code] || [];
-          var labels = labeled[code] || [];
-          mergedMap[code] = newsList.map(function(n, idx) {
-            var label = labels[idx] || { type: 'neutral', reason: '' };
-            var timeAgo = '';
-            if (n.time) {
-              var m = n.time.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-              if (m) {
-                var pubTime = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-                var diffH = (new Date() - pubTime) / 36e5;
-                if (diffH < 1) timeAgo = Math.round(diffH * 60) + '分钟前';
-                else if (diffH < 24) timeAgo = Math.round(diffH) + '小时前';
-                else timeAgo = Math.round(diffH / 24) + '天前';
-              } else if (n.date) { timeAgo = n.date; }
-            }
-            return {
-              title: n.title || n.text || '', column: n.column || '',
-              time: n.time || '', date: n.date || '', stale: n.stale || false,
-              timeAgo: timeAgo,
-              type: label.type === 'bullish' ? 'bullish' : label.type === 'bearish' ? 'bearish' : 'neutral',
-              reason: label.reason || ''
-            };
-          });
-        });
-        fund.news = mergedMap;
-        fund._aiStats = result.stats || null;
-        var aiSectors = result.relatedSectors || [];
-        fund._aiSectors = aiSectors;
-        fund._aiPowered = result.aiPowered || false;
-        // 将 AI 板块合并到关联板块区域
-        if (aiSectors.length > 0) {
-          var existingSectors = fund.holdings ? (fund.holdings.sectors || []) : [];
-          var merged = existingSectors.slice();
-          aiSectors.forEach(function(as) {
-            if (merged.indexOf(as.name) < 0) merged.push(as.name);
-          });
-          fund._mergedSectors = merged;
-        }
-      }
-      fund._holdingsLoaded = true;
-      self.applyFilter();
-    }).catch(function() {
-      fund._holdingsLoaded = true;
-      self.applyFilter();
-    });
-  },
-
-  analyzeAllFunds: function() {
-    var self = this;
-    var funds = app.globalData.funds;
-    var positionFunds = funds.filter(function(f) {
-      return app.getFundType(f.code) === 'position';
-    });
-    // 并发控制：每次最多同时分析 MAX_CONCURRENT 只基金，避免云函数请求数超限
-    var MAX_CONCURRENT = 1;
-    var results = [];
-    var index = 0;
-
-    function next() {
-      if (index >= positionFunds.length) return Promise.resolve();
-      var i = index++;
-      return self.analyzeFundIfNeeded(positionFunds[i]).then(function(r) {
-        results[i] = r;
-        return next();
-      });
-    }
-
-    var workers = [];
-    for (var w = 0; w < Math.min(MAX_CONCURRENT, positionFunds.length); w++) {
-      workers.push(next());
-    }
-    return Promise.all(workers).then(function() { return results; });
-  },
-
   loadFunds: function(codes) {
     var self = this;
     var funds = codes.map(function(code) {
@@ -385,7 +238,6 @@ Page({
     Promise.all(tasks).then(function() {
      self.setData({ funds: app.globalData.funds, loading: false });
      self.applyFilter();
-      self.analyzeAllFunds();
    }).catch(function() { self.setData({ loading: false }); });
   },
 
@@ -453,7 +305,6 @@ Page({
       // 切换到对应类型的 tab
       self.setData({ activeTab: type, activeGroup: 'all' });
      self.applyFilter();
-      self.analyzeAllFunds();
      wx.showToast({ title: '添加成功', icon: 'success' });
     }).catch(function() {
       self.setData({ adding: false });

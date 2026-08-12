@@ -1,5 +1,5 @@
 /* 云函数：AI 分析引擎（DeepSeek + 规则引擎）
- * 入参: { stocks: [{code,name,weight}], newsMap: { code: [{title,column,time}] }, fundName?: string }
+ * 入参: { stocks: [{code,name,weight}], newsMap: { code: [{title,column,time}] }, fundName?: string, fundCode?: string }
  * 返回: { labeled, suggest, stats, aiPowered }
  *
  * DeepSeek API 配置步骤：
@@ -10,6 +10,9 @@
  *
  * 若未配置 API Key 或调用失败，自动降级为关键词规则引擎。
  */
+
+const cloud = require('wx-server-sdk');
+cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 // ---- 利好关键词 (加权匹配) ----
 var BULLISH = [
@@ -126,8 +129,114 @@ var NEUTRAL_COLUMNS = [
   '部分.*解锁', '部分.*解除限售'
 ];
 
+// AI 分析结果按“基金代码 + 北京时间日期”缓存。云函数使用服务端权限读写，
+// 因此不同设备查询同一只基金时会命中同一条记录。
+var AI_CACHE_COLLECTION = 'fund_analysis_cache';
+var cacheCollectionReady = false;
+
+function getFundCode(event) {
+  var raw = String((event && (event.fundCode || event.code)) || '');
+  var code = raw.replace(/\D/g, '');
+  return /^\d{6}$/.test(code) ? code : '';
+}
+
+function pad2(n) {
+  return n < 10 ? '0' + n : '' + n;
+}
+
+function getShanghaiDayKey() {
+  try {
+    var parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(new Date());
+    var map = {};
+    parts.forEach(function(part) { map[part.type] = part.value; });
+    if (map.year && map.month && map.day) return map.year + '-' + map.month + '-' + map.day;
+  } catch (e) {}
+
+  var shifted = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  return shifted.getUTCFullYear() + '-' + pad2(shifted.getUTCMonth() + 1) + '-' + pad2(shifted.getUTCDate());
+}
+
+function isCollectionExistsError(e) {
+  var code = e && (e.errCode || e.code);
+  var msg = ((e && (e.errMsg || e.message)) || '').toLowerCase();
+  return code === -502005 || code === 'ResourceUnavailable.ResourceExist' || msg.indexOf('exist') >= 0 || msg.indexOf('已存在') >= 0;
+}
+
+function isDocumentNotExistError(e) {
+  var code = e && (e.errCode || e.code);
+  var msg = ((e && (e.errMsg || e.message)) || '').toLowerCase();
+  return code === -502004 || code === 'DATABASE_DOCUMENT_NOT_EXIST' || code === 'DOCUMENT_NOT_FOUND' || msg.indexOf('not exist') >= 0 || msg.indexOf('not found') >= 0 || msg.indexOf('不存在') >= 0;
+}
+
+async function ensureCacheCollection() {
+  if (cacheCollectionReady) return;
+  try {
+    await cloud.database().createCollection(AI_CACHE_COLLECTION);
+  } catch (e) {
+    if (!isCollectionExistsError(e)) console.error('创建 AI 缓存集合失败:', e.message || e);
+  }
+  cacheCollectionReady = true;
+}
+
+async function readCachedAnalysis(fundCode) {
+  await ensureCacheCollection();
+  var dayKey = getShanghaiDayKey();
+  var cacheId = fundCode + '_' + dayKey;
+  try {
+    var res = await cloud.database().collection(AI_CACHE_COLLECTION).doc(cacheId).get();
+    var record = res && res.data;
+    if (record && record.fundCode === fundCode && record.dayKey === dayKey && record.result && record.result.suggest) {
+      return record.result;
+    }
+  } catch (e) {
+    if (!isDocumentNotExistError(e)) console.error('读取 AI 缓存失败:', e.message || e);
+  }
+  return null;
+}
+
+async function writeCachedAnalysis(fundCode, result) {
+  if (!fundCode || !result || !result.suggest || result.aiPowered !== true) return;
+  try {
+    await ensureCacheCollection();
+    var dayKey = getShanghaiDayKey();
+    var cacheId = fundCode + '_' + dayKey;
+    await cloud.database().collection(AI_CACHE_COLLECTION).doc(cacheId).set({
+      data: {
+        fundCode: fundCode,
+        dayKey: dayKey,
+        updatedAt: Date.now(),
+        result: result
+      }
+    });
+  } catch (e) {
+    console.error('写入 AI 缓存失败:', e.message || e);
+  }
+}
+
 /* ---- 主入口 ---- */
 exports.main = async (event) => {
+  event = event || {};
+  var fundCode = getFundCode(event);
+
+  if (fundCode) {
+    var cachedResult = await readCachedAnalysis(fundCode);
+    if (cachedResult) {
+      cachedResult.cachedFromCloud = true;
+      return cachedResult;
+    }
+  }
+
+  var result = await analyze(event);
+  if (fundCode) await writeCachedAnalysis(fundCode, result);
+  return result;
+};
+
+async function analyze(event) {
   var stocks = event.stocks || [];
   var newsMap = event.newsMap || {};
   var fundName = event.fundName || '';
@@ -197,7 +306,7 @@ exports.main = async (event) => {
   // 降级：使用规则引擎结果
   rulesResult.aiPowered = false;
   return rulesResult;
-};
+}
 
 /* ---- 关键词规则引擎 (保持原有逻辑) ---- */
 function runRulesEngine(stocks, newsMap) {
