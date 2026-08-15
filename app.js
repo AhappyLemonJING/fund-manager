@@ -8,7 +8,7 @@ App({
   onLaunch: function() {
     if (wx.cloud) {
       wx.cloud.init({
-        env: 'cloud1-xxxxxxxxx',
+        env: 'cloud1-yourcloud',
         traceUser: true
       });
     }
