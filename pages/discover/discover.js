@@ -47,11 +47,20 @@ Page({
     searching: false,
     showSearch: false,
     searchResults: [],
-    searchTimer: null
+    searchTimer: null,
+    chickImages: {}
   },
 
   onLoad: function() {
+    this.loadChickAssets();
     this.fetchData();
+  },
+
+  loadChickAssets: function() {
+    var self = this;
+    app.getChickAssets().then(function(urls) {
+      self.setData({ chickImages: urls });
+    });
   },
 
   switchTab: function(e) {

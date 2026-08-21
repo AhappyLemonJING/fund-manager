@@ -24,7 +24,7 @@
 | 层 | 方案 |
 |---|------|
 | 前端框架 | 微信小程序原生 + Skyline 渲染引擎 + glass-easel 组件框架 |
-| 样式 | 自定义 CSS 变量，深色金融科技风 |
+| 样式 | 自定义 CSS 变量，嫩黄色活泼卡通风 |
 | 后端 | 微信云函数（`fundApi` / `analyze` / `sync`） |
 | 数据源 | 东方财富基金 API、新浪行情 API、华尔街见闻快讯 |
 | AI 引擎 | DeepSeek API（可选），自动降级为本地关键词规则引擎 |
@@ -36,7 +36,7 @@
 fund-manager/
 ├── app.js                    # 应用入口，全局数据、API 封装、云同步、定投引擎
 ├── app.json                  # 应用配置（Skyline、glass-easel）
-├── app.wxss                  # 全局样式（深色金融风 CSS 变量）
+├── app.wxss                  # 全局样式（嫩黄卡通风 CSS 变量）
 ├── pages/
 │   ├── index/                # 首页 — 持仓/自选列表、分组过滤、添加基金
 │   ├── detail/               # 详情 — 净值走势图、重仓股、新闻分析、交易记录
@@ -47,7 +47,8 @@ fund-manager/
 ├── cloudfunctions/
 │   ├── fundApi/              # 基金数据 API 代理（搜索、净值、历史、持仓、排名、行情）
 │   ├── analyze/              # AI 分析引擎（DeepSeek + 关键词规则降级）
-│   └── sync/                 # 多设备数据合并同步
+│   ├── sync/                 # 多设备数据合并同步
+│   └── chickAssets/          # 小鸡插画/底部导航图标上传到云存储并返回 URL
 ├── project.config.json
 └── sitemap.json
 ```
@@ -64,8 +65,10 @@ fund-manager/
 1. 克隆仓库后在微信开发者工具中导入项目目录
 2. 在 `project.config.json` 中替换为自己的 `appid`
 3. 在云开发控制台创建环境，将 `app.js` 中的 `env` 替换为你的云环境 ID
-4. 上传并部署 `cloudfunctions/` 下的三个云函数
+4. 上传并部署 `cloudfunctions/` 下的四个云函数
 5. 编译运行即可
+
+> 部署 `chickAssets` 云函数后首次调用会把 `assets/` 下的小鸡插画和底部导航图标上传到云存储；`app.js` 会自动拉取并缓存 URL。
 
 ### 配置 AI 分析（可选）
 
@@ -79,6 +82,10 @@ fund-manager/
 ## 数据存储
 
 本地数据全部通过 `wx.setStorageSync` 存储在小程序端，涵盖基金代码、分组、类型、交易记录和定投计划。`sync` 云函数负责在多个微信端之间合并同步这些数据到云数据库。每次数据变更后自动静默推送。
+
+## 图标与许可
+
+界面图标来自 [Lucide](https://lucide.dev/)（[ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE)），以 CSS mask 形式内置，不使用 emoji 图片。
 
 ## License
 

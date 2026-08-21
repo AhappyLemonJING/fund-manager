@@ -10,14 +10,17 @@ Page({
     upCount: 0,
     downCount: 0,
     updateTime: '',
-    refreshing: false
+    refreshing: false,
+    chickImages: {}
   },
 
   onLoad: function() {
+    this.loadChickAssets();
     this.fetchData();
   },
 
   onShow: function() {
+    this.loadChickAssets();
     this.startAutoRefresh();
   },
 
@@ -39,6 +42,13 @@ Page({
 
   stopAutoRefresh: function() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  },
+
+  loadChickAssets: function() {
+    var self = this;
+    app.getChickAssets().then(function(urls) {
+      self.setData({ chickImages: urls });
+    });
   },
 
   onRefresh: function() {

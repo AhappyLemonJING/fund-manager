@@ -6,33 +6,43 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 
 /* 状态框 */
 .state-box { text-align: center; padding: 240rpx 0; }
-.state-icon { font-size: 80rpx; opacity: 0.3; display: block; }
+.state-icon {
+  width: 96rpx; height: 96rpx; opacity: 0.75;
+  display: block; margin: 0 auto;
+  background-color: var(--accent-strong);
+}
+.chick-state {
+  width: 280rpx; height: 280rpx;
+  display: block; margin: 0 auto;
+}
 .state-text { margin-top: 20rpx; color: var(--text-secondary); font-size: 28rpx; }
 .state-sub { display: block; margin-top: 8rpx; font-size: 22rpx; color: var(--text-dim); }
 .retry-btn {
   display: inline-block; margin-top: 36rpx; padding: 18rpx 56rpx;
-  background: var(--accent); color: #000; border-radius: 40rpx;
-  font-weight: 600; font-size: 28rpx;
+  background: var(--accent); color: var(--accent-deep); border-radius: 40rpx;
+  font-weight: 800; font-size: 28rpx;
+  box-shadow: 0 4rpx 12rpx rgba(245, 166, 35, 0.26);
 }
 
 /* ====== 大盘概览 ====== */
 .overview {
   margin: 0 24rpx 20rpx; padding: 6rpx 0;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 20rpx; overflow: hidden;
+  background: var(--bg-card); border: 2rpx solid var(--border);
+  border-radius: 28rpx; overflow: hidden;
+  box-shadow: var(--shadow-soft);
 }
 .ov-item {
   display: flex; align-items: center; gap: 16rpx;
   padding: 22rpx 28rpx;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2rpx dashed var(--border);
 }
 .ov-item:last-child { border-bottom: none; }
 .ov-name {
-  font-size: 26rpx; font-weight: 600; width: 100rpx; flex-shrink: 0;
+  font-size: 26rpx; font-weight: 800; width: 100rpx; flex-shrink: 0;
 }
 .ov-price { font-size: 30rpx; font-weight: 700; flex: 1; }
 .ov-change {
-  padding: 6rpx 18rpx; border-radius: 12rpx; font-size: 24rpx;
+  padding: 8rpx 18rpx; border-radius: 20rpx; font-size: 24rpx;
   font-weight: 700; min-width: 120rpx; text-align: center;
 }
 .ov-change.red { background: var(--red-bg); color: var(--red); }
@@ -42,49 +52,39 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
 .breadth-bar {
   display: flex; align-items: center; justify-content: center;
   margin: 0 24rpx 24rpx; padding: 18rpx 0;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 16rpx; gap: 0;
+  background: #FFFDF5; border: 2rpx solid var(--border);
+  border-radius: 28rpx; gap: 0;
+  box-shadow: var(--shadow-soft);
 }
 .br-item { display: flex; align-items: center; gap: 10rpx; }
 .br-label { font-size: 22rpx; color: var(--text-dim); }
 .br-num { font-size: 32rpx; font-weight: 700; }
 .br-divider {
   width: 1px; height: 32rpx; margin: 0 40rpx;
-  background: var(--border);
+  background: #FFE3A6;
 }
 
 /* ====== 行业板块列表 ====== */
 .sector-list {
   margin: 0 24rpx; background: var(--bg-card);
-  border: 1px solid var(--border); border-radius: 16rpx;
+  border: 2rpx solid var(--border); border-radius: 28rpx;
   overflow: hidden;
+  box-shadow: var(--shadow-soft);
 }
 .sl-row {
   display: flex; align-items: center; gap: 16rpx;
   padding: 22rpx 24rpx;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2rpx dashed var(--border);
 }
 .sl-row:last-child { border-bottom: none; }
 .sl-left { flex: 1; min-width: 0; }
-.sl-name { font-size: 26rpx; font-weight: 600; display: block; margin-bottom: 10rpx; }
+.sl-name { font-size: 26rpx; font-weight: 800; display: block; margin-bottom: 10rpx; }
 .sl-bar-bg {
-  height: 6rpx; border-radius: 3rpx;
-  background: var(--bg-input); overflow: hidden;
+  height: 10rpx; border-radius: 6rpx;
+  background: #FFF0C6; overflow: hidden;
   width: 100%;
 }
-.sl-bar { height: 100%; border-radius: 3rpx; min-width: 4rpx; }
+.sl-bar { height: 100%; border-radius: 6rpx; min-width: 4rpx; }
 .bg-red { background: var(--red); }
 .bg-green { background: var(--green); }
 .sl-pct { font-size: 28rpx; font-weight: 700; min-width: 110rpx; text-align: right; }
-
-/* ====== 底部导航 ====== */
-.bottom-bar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
-  display: flex; align-items: center;
-  background: var(--bg-card); border-top: 1px solid var(--border);
-  padding: 12rpx 0; padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
-}
-.bb-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4rpx; padding: 6rpx 0; }
-.bb-icon { font-size: 36rpx; }
-.bb-label { font-size: 30rpx; color: var(--text-dim); font-weight: 500; }
-.bb-active .bb-label { color: var(--accent); font-weight: 700; }

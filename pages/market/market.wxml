@@ -1,4 +1,4 @@
-<navigation-bar title="市场行情" back="{{true}}" color="white" background="#0d1117"></navigation-bar>
+<navigation-bar title="市场行情" back="{{true}}" color="#4A3829" background="#FFE89A"></navigation-bar>
 
 <scroll-view class="scrollarea" scroll-y type="list"
   refresher-enabled refresher-triggered="{{refreshing}}"
@@ -9,12 +9,13 @@
   </view>
 
   <view wx:if="{{loading}}" class="state-box">
-    <text class="state-icon">⏳</text>
+    <view class="state-spinner"></view>
     <text class="state-text">加载中...</text>
   </view>
 
   <view wx:elif="{{error}}" class="state-box">
-    <text class="state-icon">📡</text>
+    <image wx:if="{{chickImages.error}}" class="chick-state" src="{{chickImages.error}}" mode="aspectFit" />
+    <view wx:else class="state-icon bb-alert"></view>
     <text class="state-text">数据加载失败</text>
     <text class="state-sub">{{errorMsg}}</text>
     <view class="retry-btn" bindtap="onRetry">重新加载</view>
@@ -64,15 +65,18 @@
 
 <view class="bottom-bar">
   <view class="bb-item" bindtap="goFund">
-    <text class="bb-icon">📊</text>
+    <image wx:if="{{chickImages.navFund}}" class="bb-img" src="{{chickImages.navFund}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-fund"></view>
     <text class="bb-label">基金</text>
   </view>
   <view class="bb-item bb-active" bindtap="noop">
-    <text class="bb-icon">📈</text>
+    <image wx:if="{{chickImages.navMarket}}" class="bb-img bb-img-market" src="{{chickImages.navMarket}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-market"></view>
     <text class="bb-label">行情</text>
   </view>
   <view class="bb-item" bindtap="goDiscover">
-    <text class="bb-icon">🔍</text>
+    <image wx:if="{{chickImages.navDiscover}}" class="bb-img" src="{{chickImages.navDiscover}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-discover"></view>
     <text class="bb-label">发现</text>
   </view>
 </view>

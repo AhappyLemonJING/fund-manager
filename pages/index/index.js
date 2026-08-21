@@ -49,12 +49,21 @@ Page({
     syncing: false,
     lastSyncTime: '',
     showSyncConfirm: false,
+    chickImages: {}
   },
 
   noop: function() {},
 
   onLoad: function() {
     var self = this;
+    self.loadChickAssets();
+    // 开启右上角菜单转发 + 朋友圈分享
+    try {
+      wx.showShareMenu({
+        withShareTicket: false,
+        menus: ['shareAppMessage', 'shareTimeline']
+      });
+    } catch (e) {}
     app.globalData.groups = app.loadGroups();
     app.globalData.groupMap = app.loadGroupMap();
     self.buildGroupTabs();
@@ -67,6 +76,7 @@ Page({
 
   onShow: function() {
     this.startAutoRefresh();
+    this.loadChickAssets();
     // 仅在首次打开时完成同步，切换 tab / 切换页面不再重复同步
     if (!app.globalData._synced) this.autoSync();
     else this.setData({ lastSyncTime: app.globalData._lastSyncTime || '' });
@@ -82,6 +92,13 @@ Page({
 
   onUnload: function() {
     this.stopAutoRefresh();
+  },
+
+  loadChickAssets: function() {
+    var self = this;
+    app.getChickAssets().then(function(urls) {
+      self.setData({ chickImages: urls });
+    });
   },
 
   startAutoRefresh: function() {
@@ -166,7 +183,7 @@ Page({
     var self = this;
     wx.showActionSheet({
       itemList: ['重命名', '删除'],
-      itemColor: '#f85149',
+      itemColor: '#F2494B',
       success: function(res) {
         if (res.tapIndex === 0) {
           self.setData({ showRenameModal: true, renameGroupId: id, renameGroupName: name });
@@ -538,5 +555,29 @@ Page({
     });
   },
 
+  // ============ 分享 ============
+
+  _shareTitle: function() {
+    var funds = app.globalData.funds || [];
+    var positionCount = 0;
+    for (var i = 0; i < funds.length; i++) {
+      if (app.getFundType(funds[i].code) === 'position') positionCount++;
+    }
+    return positionCount > 0 ? '我的基金持仓 ' + positionCount + ' 只' : '我的基金持仓';
+  },
+
+  onShareAppMessage: function() {
+    return {
+      title: this._shareTitle(),
+      path: '/pages/index/index'
+    };
+  },
+
+  onShareTimeline: function() {
+    return {
+      title: this._shareTitle(),
+      query: ''
+    };
+  }
 
 });
