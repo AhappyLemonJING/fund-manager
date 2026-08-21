@@ -1,6 +1,7 @@
-<navigation-bar title="基金管理" back="{{false}}" color="white" background="#0d1117"></navigation-bar>
+<navigation-bar title="基金管理" back="{{false}}" color="#4A3829" background="#FFE89A"></navigation-bar>
 <!-- 云同步状态栏 -->
 <view class="sync-bar" bindtap="manualSync">
+  <view class="sync-icon {{syncing ? 'sync-spin' : ''}}"></view>
   <text class="sync-status">{{syncing ? '同步中...' : (lastSyncTime ? '上次同步: ' + lastSyncTime : '未同步 - 点击同步')}}</text>
 </view>
 
@@ -32,11 +33,12 @@
     <text style="color:var(--text-dim);">加载中...</text>
   </view>
   <view wx:elif="{{displayFunds.length === 0}}" style="text-align:center;padding:240rpx 0 80rpx;">
-    <text style="font-size:100rpx;opacity:0.4;">📊</text>
+    <image wx:if="{{chickImages.empty}}" class="empty-chick" src="{{chickImages.empty}}" mode="aspectFit" />
+    <view wx:else class="empty-icon bb-fund"></view>
     <view style="margin-top:30rpx;color:var(--text-secondary);font-size:28rpx;line-height:1.6;">
       {{activeTab === 'position' ? '还没有持仓基金' : '还没有自选基金'}}<text style="display:block;">点击下方按钮添加</text>
     </view>
-    <view style="margin-top:40rpx;padding:20rpx 60rpx;background:var(--accent);color:#000;border-radius:40rpx;font-weight:600;font-size:28rpx;display:inline-block;" bindtap="showAddModal">+ 添加基金</view>
+    <view style="margin-top:40rpx;padding:20rpx 60rpx;background:var(--accent);color:var(--accent-deep);border-radius:40rpx;font-weight:800;font-size:28rpx;display:inline-block;box-shadow:0 4rpx 12rpx rgba(245,166,35,0.26);" bindtap="showAddModal">+ 添加基金</view>
   </view>
   <view wx:else>
     <view wx:for="{{displayFunds}}" wx:key="code" class="card" bindtap="goDetail" data-index="{{index}}">
@@ -84,7 +86,7 @@
     </view>
     <!-- 基金代码 -->
     <view class="modal-label" style="margin-top:20rpx;">基金代码</view>
-    <input class="modal-input" placeholder="例如: 000001" placeholder-style="color:#6e7681" value="{{inputCode}}" bindinput="onInputCode" maxlength="6" type="number"/>
+    <input class="modal-input" placeholder="例如: 000001" placeholder-style="color:#B08D63" value="{{inputCode}}" bindinput="onInputCode" maxlength="6" type="number"/>
     <view class="modal-hint">输入6位数字基金代码</view>
     <!-- 分组选择 -->
     <view class="modal-label" style="margin-top:24rpx;">分组</view>
@@ -132,7 +134,7 @@
     </view>
     <view wx:if="{{groups.length === 0}}" style="color:var(--text-dim);font-size:26rpx;text-align:center;padding:20rpx;">暂无自定义分组</view>
     <view style="display:flex;gap:16rpx;margin-top:24rpx;">
-      <input class="gm-input" style="flex:1;" placeholder="输入分组名称" placeholder-style="color:#6e7681" value="{{newGroupName}}" bindinput="onNewGroupInput" maxlength="10"/>
+      <input class="gm-input" style="flex:1;" placeholder="输入分组名称" placeholder-style="color:#B08D63" value="{{newGroupName}}" bindinput="onNewGroupInput" maxlength="10"/>
       <view class="btn btn-ok" style="flex:none;padding:0 24rpx;display:flex;align-items:center;" bindtap="createGroup">新建</view>
     </view>
     <view style="margin-top:28rpx;text-align:center;">
@@ -169,7 +171,7 @@
 <view wx:if="{{showQuickGroup}}" class="modal-mask">
   <view class="modal">
     <view class="modal-title">新建分组</view>
-    <input class="modal-input" placeholder="输入分组名称" placeholder-style="color:#6e7681" value="{{quickGroupName}}" bindinput="onQuickInput" maxlength="10"/>
+    <input class="modal-input" placeholder="输入分组名称" placeholder-style="color:#B08D63" value="{{quickGroupName}}" bindinput="onQuickInput" maxlength="10"/>
     <view class="modal-btns">
       <view class="btn btn-cancel" bindtap="hideQuickGroup">取消</view>
       <view class="btn btn-ok" bindtap="confirmQuickGroup">确定</view>
@@ -195,7 +197,7 @@
 <view wx:if="{{showRenameModal}}" class="modal-mask">
   <view class="modal">
     <view class="modal-title">重命名分组</view>
-    <input class="modal-input" placeholder="输入新名称" placeholder-style="color:#6e7681" value="{{renameGroupName}}" bindinput="onRenameInput" maxlength="10"/>
+    <input class="modal-input" placeholder="输入新名称" placeholder-style="color:#B08D63" value="{{renameGroupName}}" bindinput="onRenameInput" maxlength="10"/>
     <view class="modal-btns">
       <view class="btn btn-cancel" bindtap="hideRenameModal">取消</view>
       <view class="btn btn-ok" bindtap="confirmRenameTab">确定</view>
@@ -207,15 +209,18 @@
 <!-- 底部导航 -->
 <view class="bottom-bar">
   <view class="bb-item bb-active" bindtap="noop">
-    <text class="bb-icon">📊</text>
+    <image wx:if="{{chickImages.navFund}}" class="bb-img" src="{{chickImages.navFund}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-fund"></view>
     <text class="bb-label">基金</text>
   </view>
   <view class="bb-item" bindtap="goMarket">
-    <text class="bb-icon">📈</text>
+    <image wx:if="{{chickImages.navMarket}}" class="bb-img bb-img-market" src="{{chickImages.navMarket}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-market"></view>
     <text class="bb-label">行情</text>
   </view>
   <view class="bb-item" bindtap="goDiscover">
-    <text class="bb-icon">🔍</text>
+    <image wx:if="{{chickImages.navDiscover}}" class="bb-img" src="{{chickImages.navDiscover}}" mode="aspectFit" />
+    <view wx:else class="bb-icon bb-discover"></view>
     <text class="bb-label">发现</text>
   </view>
 </view>

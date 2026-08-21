@@ -16,7 +16,12 @@
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "images"
+      }
+    ],
     "include": []
   },
   "appid": "your_app_id",

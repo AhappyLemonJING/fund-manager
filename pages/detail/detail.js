@@ -151,7 +151,8 @@ Page({
     chartCanvasReady: false,
     showTradePanel: false,
     tradeRecords: [],
-    tradePlans: []
+    tradePlans: [],
+    chickImages: {}
   },
   _timer: null,
   _fundIndex: -1,
@@ -161,6 +162,14 @@ Page({
   _canvasHeight: 0,
 
   onLoad: function(options) {
+    this.loadChickAssets();
+    // 开启右上角菜单转发 + 朋友圈分享
+    try {
+      wx.showShareMenu({
+        withShareTicket: false,
+        menus: ['shareAppMessage', 'shareTimeline']
+      });
+    } catch (e) {}
     var code = options.code;
     var name = decodeURIComponent(options.name || '');
     var funds = app.globalData.funds;
@@ -193,6 +202,7 @@ Page({
   },
 
   onShow: function() {
+    this.loadChickAssets();
     this.startAutoRefresh();
   },
 
@@ -208,6 +218,13 @@ Page({
         if (funds[i].code === this._fundCode) { funds.splice(i, 1); break; }
       }
     }
+  },
+
+  loadChickAssets: function() {
+    var self = this;
+    app.getChickAssets().then(function(urls) {
+      self.setData({ chickImages: urls });
+    });
   },
 
   // ============ 走势图 ============
@@ -355,7 +372,7 @@ Page({
     function yPos(v) { return padding.top + plotH - ((v - yMin) / yRange) * plotH; }
 
     // 网格线
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = 'rgba(245, 166, 35, 0.16)';
     ctx.lineWidth = 0.5;
     for (var g = 0; g <= 4; g++) {
       var gy = padding.top + (g / 4) * plotH;
@@ -367,7 +384,7 @@ Page({
 
     // 零线
     var zeroY = yPos(0);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.strokeStyle = 'rgba(245, 166, 35, 0.38)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -378,7 +395,7 @@ Page({
 
     // 基准线 (沪深300)
     if (benchVals && benchVals.length > 0) {
-      ctx.strokeStyle = '#8b949e';
+      ctx.strokeStyle = '#B28A5A';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       for (var i = 0; i < n; i++) {
@@ -390,7 +407,7 @@ Page({
     }
 
     // 基金净值线
-    ctx.strokeStyle = '#d4a853';
+    ctx.strokeStyle = '#F5A623';
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (var i = 0; i < n; i++) {
@@ -403,7 +420,7 @@ Page({
     // X 轴标签 (最多显示 5 个)
     var labelCount = Math.min(5, n);
     var step = Math.max(1, Math.floor(n / labelCount));
-    ctx.fillStyle = '#8b949e';
+    ctx.fillStyle = '#B08D63';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     for (var i = 0; i < n; i += step) {
@@ -425,17 +442,17 @@ Page({
     // 图例
     var lx = padding.left + 8;
     var ly = padding.top + 4;
-    ctx.fillStyle = '#d4a853';
+    ctx.fillStyle = '#F5A623';
     ctx.fillRect(lx, ly, 12, 3);
-    ctx.fillStyle = '#e6edf3';
+    ctx.fillStyle = '#8A6A4F';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('净值', lx + 16, ly + 4);
 
-    ctx.fillStyle = '#8b949e';
+    ctx.fillStyle = '#B28A5A';
     lx += 80;    ctx.fillRect(lx, ly, 12, 3);
     var bmLabel = (benchVals && benchVals.length > 0) ? '沪深300' : '沪深300(无)';
-    ctx.fillStyle = benchVals && benchVals.length > 0 ? '#e6edf3' : '#6e7681';
+    ctx.fillStyle = benchVals && benchVals.length > 0 ? '#8A6A4F' : '#D9B98C';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(bmLabel, lx + 16, ly + 4);  },
@@ -862,4 +879,34 @@ Page({
       }
     });
   },
+
+  // ============ 分享 ============
+
+  onShareAppMessage: function() {
+    var name = this.data.name || this._fundCode || '';
+    var code = this._fundCode || '';
+    var title = name + '（' + code + '）';
+    if (this.data.nav && this.data.nav !== '--') {
+      title += ' 最新净值 ' + this.data.nav;
+    }
+    return {
+      title: title,
+      path: '/pages/detail/detail?code=' + encodeURIComponent(code) +
+        '&name=' + encodeURIComponent(name)
+    };
+  },
+
+  onShareTimeline: function() {
+    var name = this.data.name || this._fundCode || '';
+    var code = this._fundCode || '';
+    var title = name + '（' + code + '）';
+    if (this.data.nav && this.data.nav !== '--') {
+      title += ' 最新净值 ' + this.data.nav;
+    }
+    return {
+      title: title,
+      query: 'code=' + encodeURIComponent(code) +
+        '&name=' + encodeURIComponent(name)
+    };
+  }
 });

@@ -1,5 +1,5 @@
 <!-- 详情页 - 基金分析 -->
-<navigation-bar title="{{name}}" back="{{true}}" color="white" background="#0d1117"></navigation-bar>
+<navigation-bar title="{{name}}" back="{{true}}" color="#4A3829" background="#FFE89A"></navigation-bar>
 
 <!-- 页面内容使用 flex 布局：静态区 + 滚动区 -->
 <view class="detail-body">
@@ -115,23 +115,33 @@
       <view wx:if="{{loadingAnalysis}}" class="loading-line">AI 分析中...</view>
       <block wx:else>
         <view wx:if="{{aiPowered}}" class="ai-badge">
-          <text class="ai-badge-icon">✨</text> DeepSeek AI 分析
+          <view class="ai-badge-icon bb-sparkles"></view>
+          DeepSeek AI 分析
         </view>
-        <view class="rec-label">综合分析</view>
+        <view class="rec-head">
+          <text class="rec-head-text">综合</text>
+          <image wx:if="{{chickImages.ai}}" class="rec-chick rec-head-chick" src="{{chickImages.ai}}" mode="aspectFit" />
+          <text class="rec-head-text">分析</text>
+        </view>
         <view class="rec-action {{suggestClass}}">{{suggestLabel}}</view>
         <view class="rec-reason">{{suggest.reason}}</view>
       </block>
-        <!-- 当日信号（融入当日涨跌幅的分析） -->
+    </view>
+
+    <!-- 当日信号（融入当日涨跌幅的分析） -->
     <view wx:if="{{suggestDaily}}" class="rec rec-daily {{suggestDailyClass}}">
       <view wx:if="{{loadingAnalysis}}" class="loading-line">AI 分析中...</view>
       <block wx:else>
-        <view class="rec-label">当日信号</view>
+        <view class="rec-head">
+          <text class="rec-head-text">当日</text>
+          <image wx:if="{{chickImages.ai}}" class="rec-chick rec-chick-small rec-head-chick" src="{{chickImages.ai}}" mode="aspectFit" />
+          <text class="rec-head-text">信号</text>
+        </view>
         <view class="rec-action {{suggestDailyClass}}">{{suggestDailyLabel}}</view>
         <view class="rec-reason">{{suggestDaily.reason}}</view>
       </block>
     </view>
 
-</view>
   </scroll-view>
 </view>
 

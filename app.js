@@ -2,7 +2,8 @@ App({
   globalData: {
     funds: [],
     groups: [],
-    groupMap: {}  // { fundCode: groupId }
+    groupMap: {},  // { fundCode: groupId }
+    chickAssets: {}
   },
 
   onLaunch: function() {
@@ -12,6 +13,48 @@ App({
         traceUser: true
       });
     }
+    this.getChickAssets();
+  },
+
+
+  // ============ 小鸡插画（云存储） ============
+
+  getChickAssets: function() {
+    var self = this;
+    var cache = {};
+    try { cache = wx.getStorageSync('chick_assets_cache') || {}; } catch (e) {}
+    var needKeys = ['empty', 'search', 'error', 'ai', 'navFund', 'navMarket', 'navDiscover'];
+    var cacheReady = cache.fileIds && cache.v === 3 && cache.expireAt > Date.now();
+    if (cacheReady) {
+      for (var i = 0; i < needKeys.length; i++) {
+        if (!cache.fileIds[needKeys[i]]) { cacheReady = false; break; }
+      }
+    }
+    if (cacheReady) {
+      self.globalData.chickAssets = cache.fileIds;
+      return Promise.resolve(cache.fileIds);
+    }
+
+    var p = self.globalData._chickAssetsPromise;
+    if (p) return p;
+
+    p = wx.cloud.callFunction({ name: 'chickAssets' }).then(function(res) {
+      var data = (res.result && res.result.assets) || {};
+      if (Object.keys(data).length === 0) {
+        data = (res.result && res.result.urls) || {};
+      }
+      var save = { fileIds: data, v: 3, expireAt: Date.now() + 90 * 60 * 1000 };
+      try { wx.setStorageSync('chick_assets_cache', save); } catch (e) {}
+      self.globalData.chickAssets = data;
+      return data;
+    }).catch(function() {
+      return self.globalData.chickAssets || {};
+    });
+
+    self.globalData._chickAssetsPromise = p;
+    p.then(function() { self.globalData._chickAssetsPromise = null; },
+           function() { self.globalData._chickAssetsPromise = null; });
+    return p;
   },
 
 

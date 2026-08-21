@@ -1,5 +1,5 @@
 .weui-navigation-bar {
-  --weui-FG-0:rgba(255,255,255,0.9);
+  --weui-FG-0:#5B4636;
   --height: 44px;
   --left: 16px;
 }
