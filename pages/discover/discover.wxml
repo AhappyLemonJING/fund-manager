@@ -51,7 +51,6 @@
 
 <view class="toolbar">
   <view class="sort-trigger" bindtap="toggleSortPicker">
-    <text class="sort-label">{{sortOptions[0].label}}</text>
     <text wx:for="{{sortOptions}}" wx:key="id" wx:if="{{item.id === activeSort}}">{{item.label}}</text>
     <text class="sort-arrow">{{showSortPicker ? '▴' : '▾'}}</text>
   </view>
@@ -144,17 +143,14 @@
 <view class="bottom-bar">
   <view class="bb-item" bindtap="goFund">
     <image wx:if="{{chickImages.navFund}}" class="bb-img" src="{{chickImages.navFund}}" mode="aspectFit" />
-    <view wx:else class="bb-icon bb-fund"></view>
     <text class="bb-label">基金</text>
   </view>
   <view class="bb-item" bindtap="goMarket">
     <image wx:if="{{chickImages.navMarket}}" class="bb-img bb-img-market" src="{{chickImages.navMarket}}" mode="aspectFit" />
-    <view wx:else class="bb-icon bb-market"></view>
     <text class="bb-label">行情</text>
   </view>
   <view class="bb-item bb-active" bindtap="noop">
     <image wx:if="{{chickImages.navDiscover}}" class="bb-img" src="{{chickImages.navDiscover}}" mode="aspectFit" />
-    <view wx:else class="bb-icon bb-discover"></view>
     <text class="bb-label">发现</text>
   </view>
 </view>
