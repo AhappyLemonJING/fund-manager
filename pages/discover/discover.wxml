@@ -51,7 +51,6 @@
 
 <view class="toolbar">
   <view class="sort-trigger" bindtap="toggleSortPicker">
-    <text class="sort-label">{{sortOptions[0].label}}</text>
     <text wx:for="{{sortOptions}}" wx:key="id" wx:if="{{item.id === activeSort}}">{{item.label}}</text>
     <text class="sort-arrow">{{showSortPicker ? '▴' : '▾'}}</text>
   </view>

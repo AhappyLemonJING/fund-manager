@@ -158,7 +158,7 @@ page {
   min-height: 0;
 }
 .detail-static { width: 100%; box-sizing: border-box; 
-  flex: none; padding: 0 32rpx;
+  flex: none; padding: 24rpx 32rpx 0;
   overflow: visible;
 }
 .detail-scroll {
