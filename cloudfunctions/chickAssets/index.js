@@ -16,27 +16,29 @@ const ASSETS = {
 };
 const KEYS = Object.keys(ASSETS);
 
-exports.main = async function(event) {
-  const force = !!(event && event.force);
-  const db = cloud.database();
-  const docRef = db.collection('app_assets').doc(DOC_ID);
-  let existing = null;
+function hasAll(obj) {
+  return KEYS.every(function(key) { return obj && obj[key]; });
+}
 
+async function refreshUrls(fileIds, fallbackUrls) {
   try {
-    const doc = await docRef.get();
-    if (doc && doc.data) existing = doc.data;
+    const urlRes = await cloud.getTempFileURL({ fileList: KEYS.map(function(key) { return fileIds[key]; }) });
+    const urlList = urlRes.fileList || urlRes.tempFileURLList || [];
+    const urls = {};
+    for (let i = 0; i < urlList.length; i++) {
+      const item = urlList[i];
+      if (!item.tempFileURL) continue;
+      const key = KEYS.find(function(key) { return fileIds[key] === item.fileID; });
+      if (key) urls[key] = item.tempFileURL;
+    }
+    if (hasAll(urls)) return urls;
   } catch (e) {
-    // 首次调用时集合或文档还不存在，继续执行上传
+    console.error('chickAssets temp URL refresh failed', e.message || e);
   }
+  return hasAll(fallbackUrls) ? fallbackUrls : null;
+}
 
-  const hasAll = existing &&
-    existing.fileIds &&
-    existing.urls &&
-    KEYS.every(function(key) { return existing.fileIds[key] && existing.urls[key]; });
-  if (!force && hasAll) {
-    return { success: true, cached: true, assets: existing.fileIds, urls: existing.urls };
-  }
-
+async function uploadAll() {
   const fileIds = {};
   for (let i = 0; i < KEYS.length; i++) {
     const key = KEYS[i];
@@ -54,16 +56,29 @@ exports.main = async function(event) {
       throw e;
     }
   }
+  return fileIds;
+}
 
-  const urlRes = await cloud.getTempFileURL({ fileList: KEYS.map(function(key) { return fileIds[key]; }) });
-  const urlList = urlRes.fileList || urlRes.tempFileURLList || [];
-  const urls = {};
-  for (let i = 0; i < urlList.length; i++) {
-    const item = urlList[i];
-    if (!item.tempFileURL) continue;
-    const key = KEYS.find(function(key) { return fileIds[key] === item.fileID; });
-    if (key) urls[key] = item.tempFileURL;
+exports.main = async function(event) {
+  const force = !!(event && event.force);
+  const db = cloud.database();
+  const docRef = db.collection('app_assets').doc(DOC_ID);
+  let existing = null;
+
+  try {
+    const doc = await docRef.get();
+    if (doc && doc.data) existing = doc.data;
+  } catch (e) {
+    // 首次调用时集合或文档还不存在，继续执行上传
   }
+
+  const fileIds = existing && hasAll(existing.fileIds) ? existing.fileIds : null;
+  const fallbackUrls = existing && hasAll(existing.urls) ? existing.urls : null;
+  const uploaded = force || !fileIds;
+
+  const finalFileIds = uploaded ? await uploadAll() : fileIds;
+  const urls = await refreshUrls(finalFileIds, fallbackUrls);
+  if (!urls) throw new Error('chickAssets temp URLs unavailable');
 
   try {
     await db.createCollection('app_assets');
@@ -72,7 +87,7 @@ exports.main = async function(event) {
   }
   await docRef.set({
     data: {
-      fileIds: fileIds,
+      fileIds: finalFileIds,
       urls: urls,
       updatedAt: Date.now(),
       force: force
@@ -80,5 +95,5 @@ exports.main = async function(event) {
   });
 
   console.log('chickAssets ready, count=' + KEYS.length);
-  return { success: true, cached: false, assets: fileIds, urls: urls };
+  return { success: true, cached: !uploaded, assets: finalFileIds, urls: urls };
 };

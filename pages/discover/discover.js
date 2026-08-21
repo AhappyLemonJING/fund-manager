@@ -58,6 +58,10 @@ Page({
 
   loadChickAssets: function() {
     var self = this;
+    var cached = app.globalData.chickAssets;
+    if (cached && Object.keys(cached).length) {
+      self.setData({ chickImages: cached });
+    }
     app.getChickAssets().then(function(urls) {
       self.setData({ chickImages: urls });
     });

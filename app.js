@@ -7,13 +7,16 @@ App({
   },
 
   onLaunch: function() {
+    var self = this;
     if (wx.cloud) {
       wx.cloud.init({
         env: 'cloud1-d7gomttjdaf011279',
         traceUser: true
       });
     }
-    this.getChickAssets();
+    this.getChickAssets().then(function(urls) {
+      self.preloadNavAssets(urls);
+    });
   },
 
 
@@ -24,7 +27,7 @@ App({
     var cache = {};
     try { cache = wx.getStorageSync('chick_assets_cache') || {}; } catch (e) {}
     var needKeys = ['empty', 'search', 'error', 'ai', 'navFund', 'navMarket', 'navDiscover'];
-    var cacheReady = cache.fileIds && cache.v === 3 && cache.expireAt > Date.now();
+    var cacheReady = cache.fileIds && cache.v === 5 && cache.expireAt > Date.now();
     if (cacheReady) {
       for (var i = 0; i < needKeys.length; i++) {
         if (!cache.fileIds[needKeys[i]]) { cacheReady = false; break; }
@@ -43,7 +46,7 @@ App({
       if (Object.keys(data).length === 0) {
         data = (res.result && res.result.urls) || {};
       }
-      var save = { fileIds: data, v: 3, expireAt: Date.now() + 90 * 60 * 1000 };
+      var save = { fileIds: data, v: 5, expireAt: Date.now() + 90 * 60 * 1000 };
       try { wx.setStorageSync('chick_assets_cache', save); } catch (e) {}
       self.globalData.chickAssets = data;
       return data;
@@ -55,6 +58,18 @@ App({
     p.then(function() { self.globalData._chickAssetsPromise = null; },
            function() { self.globalData._chickAssetsPromise = null; });
     return p;
+  },
+
+  preloadNavAssets: function(urls) {
+    if (!urls) return;
+    ['navFund', 'navMarket', 'navDiscover'].forEach(function(key) {
+      var src = urls[key];
+      if (!src) return;
+      wx.getImageInfo({
+        src: src,
+        complete: function() {}
+      });
+    });
   },
 
 
