@@ -24,7 +24,7 @@
     ],
     "include": []
   },
-  "appid": "your_app_id",
+  "appid": "touristappid",
   "editorSetting": {},
   "cloudfunctionRoot": "cloudfunctions/",
   "cloud": true

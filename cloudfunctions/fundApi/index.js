@@ -9,7 +9,9 @@ exports.main = async (event) => {
   let url, opts = {};
 
   if (type === 'search') {
-    url = 'https://searchapi.eastmoney.com/api/suggest/get?input=' + encodeURIComponent(code) + '&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=' + (event.count || 20);
+    var searchToken = process.env.EASTMONEY_SEARCH_TOKEN;
+    if (!searchToken) return { error: 'EASTMONEY_SEARCH_TOKEN not configured' };
+    url = 'https://searchapi.eastmoney.com/api/suggest/get?input=' + encodeURIComponent(code) + '&type=14&token=' + encodeURIComponent(searchToken) + '&count=' + (event.count || 20);
   } else if (type === 'nav') {
     url = 'https://api.fund.eastmoney.com/f10/lsjz?fundCode=' + encodeURIComponent(code) + '&pageIndex=1&pageSize=1';
   } else if (type === 'history') {

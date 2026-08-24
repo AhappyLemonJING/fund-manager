@@ -63,12 +63,31 @@ fund-manager/
 ### 本地运行
 
 1. 克隆仓库后在微信开发者工具中导入项目目录
-2. 在 `project.config.json` 中替换为自己的 `appid`
-3. 在云开发控制台创建环境，将 `app.js` 中的 `env` 替换为你的云环境 ID
-4. 上传并部署 `cloudfunctions/` 下的四个云函数
-5. 编译运行即可
+2. 复制 `env.example.js` 为 `env.js`，把 `cloudEnvId` 替换成你的云环境 ID
+3. 新建 `project.private.config.json`（该文件已被 `.gitignore` 忽略）并写入自己的小程序 `appid`：
+
+   ```json
+   {
+     "appid": "wx你的AppID",
+     "projectname": "fund-manager",
+     "libVersion": "3.17.1"
+   }
+   ```
+
+   `project.config.json` 中的 `appid` 使用 `touristappid` 占位，不会提交真实 AppID。
+4. 在云开发控制台创建环境
+5. 上传并部署 `cloudfunctions/` 下的四个云函数
+6. 编译运行即可
 
 > 部署 `chickAssets` 云函数后首次调用会把 `assets/` 下的小鸡插画和底部导航图标上传到云存储；`app.js` 会自动拉取并缓存 URL。
+
+### 配置基金搜索 token（必选）
+
+`fundApi` 云函数的基金搜索接口需要东方财富搜索 token，通过云函数环境变量配置，避免硬编码到仓库：
+
+1. 微信云开发控制台 → 云函数 → `fundApi` → 环境变量，添加：
+   - `EASTMONEY_SEARCH_TOKEN` = 你的东方财富搜索 token
+2. 重新部署 `fundApi` 云函数
 
 ### 配置 AI 分析（可选）
 
@@ -78,6 +97,13 @@ fund-manager/
 2. 微信云开发控制台 → 云函数 → `analyze` → 环境变量，添加：
    - `DEEPSEEK_API_KEY` = `sk-xxxxxxxxxxxxxxxx`
 3. 重新部署 `analyze` 云函数
+
+## 隐私与安全
+
+- `project.config.json` 中的 `appid` 使用 `touristappid` 占位，真实 AppID 只写在本地 `project.private.config.json`
+- 云环境 ID 写在本地 `env.js`，该文件已被 `.gitignore` 忽略
+- `fundApi` 的东方财富搜索 token 通过云函数环境变量 `EASTMONEY_SEARCH_TOKEN` 配置
+- 涉及本地敏感配置的文件：`env.js`、`project.private.config.json`，请勿提交
 
 ## 数据存储
 
