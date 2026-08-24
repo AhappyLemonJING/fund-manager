@@ -1,3 +1,6 @@
+var envConfig = { cloudEnvId: 'YOUR_CLOUD_ENV_ID' };
+try { envConfig = require('./env.js'); } catch (e) {}
+
 App({
   globalData: {
     funds: [],
@@ -10,7 +13,7 @@ App({
     var self = this;
     if (wx.cloud) {
       wx.cloud.init({
-        env: 'cloud1-d7gomttjdaf011279',
+        env: envConfig.cloudEnvId,
         traceUser: true
       });
     }
