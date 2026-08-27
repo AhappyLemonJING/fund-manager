@@ -83,7 +83,8 @@
   refresher-enabled refresher-triggered="{{recommendRefreshing}}"
   bindrefresherrefresh="onRecommendRefresh" refresher-threshold="80">
   <view wx:if="{{recommendLoading && recommendations.length === 0}}" class="state-box">
-    <view class="state-spinner"></view>
+    <image wx:if="{{chickImages.ai}}" class="rec-loading-chick" src="{{chickImages.ai}}" mode="aspectFit" />
+    <view wx:else class="state-spinner"></view>
     <text class="state-text">AI 正在挑选适合建仓的基金...</text>
   </view>
 
