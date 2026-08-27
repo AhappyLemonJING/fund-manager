@@ -49,7 +49,16 @@ Page({
     syncing: false,
     lastSyncTime: '',
     showSyncConfirm: false,
-    chickImages: {}
+    chickImages: {},
+    // daily recommendations
+    recommendations: [],
+    recommendLoading: false,
+    recommendRefreshing: false,
+    recommendError: '',
+    recommendDate: '',
+    recommendAiPowered: false,
+    recommendMarketContext: null,
+    recommendGeneratedAt: ''
   },
 
   noop: function() {},
@@ -83,6 +92,9 @@ Page({
    if (app.globalData.funds.length > 0) {
      this.setData({ funds: app.globalData.funds });
      this.applyFilter();
+   }
+   if (this.data.activeTab === 'recommend' && this.data.recommendations.length === 0 && !this.data.recommendLoading) {
+     this.loadRecommendations();
    }
   },
 
@@ -162,8 +174,136 @@ Page({
   switchTab: function(e) {
     var id = e.currentTarget.dataset.id;
     this.setData({ activeTab: id, activeGroup: 'all' });
+    if (id === 'recommend') {
+      this.loadRecommendations();
+      return;
+    }
     this.applyFilter();
   },
+
+  // ============ 每日推荐 ============
+
+  formatRecommendation: function(item) {
+    if (!item) return item;
+    var perf = item.perf || {};
+    var fmt = function(v) {
+      if (v == null || isNaN(v)) return '--';
+      return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+    };
+    item.navStr = item.nav != null ? Number(item.nav).toFixed(4) : '--';
+    item.dailyPctStr = item.dailyPct != null ? (item.dailyPct >= 0 ? '+' : '') + Number(item.dailyPct).toFixed(2) + '%' : '--';
+    item.m1Str = fmt(perf.m1);
+    item.m3Str = fmt(perf.m3);
+    item.m6Str = fmt(perf.m6);
+    item.y1Str = fmt(perf.y1);
+    item.m1Up = (perf.m1 || 0) >= 0;
+    item.m3Up = (perf.m3 || 0) >= 0;
+    item.m6Up = (perf.m6 || 0) >= 0;
+    item.y1Up = (perf.y1 || 0) >= 0;
+    item.sizeStr = item.fundSize > 0 ? Number(item.fundSize).toFixed(2) + '亿' : '';
+    item.riskClass = item.risk === '低' ? 'risk-low' : item.risk === '高' ? 'risk-high' : 'risk-mid';
+    item.tags = Array.isArray(item.tags) ? item.tags : [];
+    item.evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    item._added = app.loadCodes().indexOf(item.code) >= 0;
+    return item;
+  },
+
+  loadRecommendations: function(force) {
+    var self = this;
+    if (!force && self.data.recommendLoading && self.data.recommendations.length > 0) return;
+
+    self.setData({
+      recommendLoading: true,
+      recommendRefreshing: true,
+      recommendError: ''
+    });
+
+    app.fetchRecommendations({
+      excludeCodes: app.loadCodes(),
+      force: !!force
+    }).then(function(data) {
+      if (!data || !Array.isArray(data.recommendations)) {
+        throw new Error((data && data.error) || '推荐数据为空');
+      }
+
+      var recommendations = data.recommendations.map(function(item) {
+        return self.formatRecommendation(item);
+      });
+
+      self.setData({
+        recommendations: recommendations,
+        recommendDate: data.date || '',
+        recommendAiPowered: !!data.aiPowered,
+        recommendMarketContext: data.marketContext || null,
+        recommendGeneratedAt: data.generatedAt || '',
+        recommendLoading: false,
+        recommendRefreshing: false,
+        recommendError: ''
+      });
+    }).catch(function(err) {
+      self.setData({
+        recommendLoading: false,
+        recommendRefreshing: false,
+        recommendError: (err && err.message) || '推荐加载失败'
+      });
+    });
+  },
+
+  onRecommendRefresh: function() {
+    this.setData({ recommendRefreshing: true, recommendLoading: true });
+    this.loadRecommendations(true);
+  },
+
+  addRecommendedFund: function(e) {
+    var code = e.currentTarget.dataset.code;
+    var name = e.currentTarget.dataset.name;
+    if (!code) return;
+    if (app.globalData.funds.some(function(f) { return f.code === code; })) {
+      wx.showToast({ title: '该基金已在列表中', icon: 'none' });
+      return;
+    }
+
+    var fund = {
+      code: code,
+      name: name || '',
+      nav: null,
+      changePct: 0,
+      date: '',
+      holdings: null,
+      news: null,
+      suggestion: null
+    };
+    app.globalData.funds.push(fund);
+    app.saveCodes(app.globalData.funds.map(function(f) { return f.code; }));
+    app.setFundType(code, 'watch');
+    app.pushToCloud();
+
+    app.fetchNav(code).then(function(data) {
+      if (data) {
+        fund.nav = data.nav.toFixed(4);
+        fund.changePct = data.changePct.toFixed(2);
+        fund.date = data.date;
+      }
+    }).catch(function() {});
+
+    var recommendations = this.data.recommendations.map(function(item) {
+      if (item.code === code) item._added = true;
+      return item;
+    });
+    this.setData({ recommendations: recommendations, funds: app.globalData.funds });
+    wx.showToast({ title: '已加入自选', icon: 'success', duration: 1000 });
+  },
+
+  goRecommendDetail: function(e) {
+    var code = e.currentTarget.dataset.code;
+    var name = e.currentTarget.dataset.name;
+    if (!code) return;
+    var query = 'code=' + code;
+    if (name) query += '&name=' + encodeURIComponent(name);
+    wx.navigateTo({ url: '/pages/detail/detail?' + query });
+  },
+
+  // ============ 行情/发现 ============
 
   switchGroup: function(e) {
     var id = e.currentTarget.dataset.id;
