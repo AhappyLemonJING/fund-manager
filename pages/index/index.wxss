@@ -254,6 +254,28 @@ page { background: var(--bg); width: 100%; overflow-x: hidden; }
   padding-top: 12rpx;
   padding-bottom: 180rpx;
 }
+.rec-loading-chick {
+  width: 260rpx;
+  height: 260rpx;
+  display: block;
+  margin: 0 auto;
+  animation: recChickBounce 1.8s ease-in-out infinite;
+}
+.chick-state {
+  width: 260rpx;
+  height: 260rpx;
+  display: block;
+  margin: 0 auto;
+}
+
+@keyframes recChickBounce {
+  0%, 100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-14rpx) rotate(2deg);
+  }
+}
 
 .rec-hero {
   margin: 0 24rpx 18rpx;

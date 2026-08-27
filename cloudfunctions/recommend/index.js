@@ -28,10 +28,26 @@ const MAX_PROFILES = 7;
 const MAX_HOLDING_NEWS_STOCKS = 3;
 const CONCURRENCY = 4;
 
-const RANK_SORTS = [
-  { ft: 'gp', sc: '1nzf', label: '股票型' },
-  { ft: 'hh', sc: '6yzf', label: '混合型' },
-  { ft: 'zs', sc: '1yzf', label: '指数型' }
+const GROWTH_RANK_SORTS = [
+  { ft: 'gp', sc: '1nzf', label: '股票型', pages: [1], mode: 'growth' },
+  { ft: 'hh', sc: '6yzf', label: '混合型', pages: [1], mode: 'growth' },
+  { ft: 'zs', sc: '1yzf', label: '指数型', pages: [1], mode: 'growth' }
+];
+
+// 从排名中后段补入价值/低估风格，避免只取近期涨幅最高的基金。
+const VALUE_RANK_SORTS = [
+  { ft: 'gp', sc: '1nzf', label: '股票型', pages: [2, 3], mode: 'value' },
+  { ft: 'hh', sc: '6yzf', label: '混合型', pages: [2, 3], mode: 'value' },
+  { ft: 'zs', sc: '1yzf', label: '指数型', pages: [2, 3, 4], mode: 'value' }
+];
+
+const CANDIDATE_SOURCES = GROWTH_RANK_SORTS.concat(VALUE_RANK_SORTS);
+
+const VALUE_KEYWORDS = [
+  '价值', '红利', '低波', '股息', '金融', '银行', '保险', '券商', '证券',
+  '地产', '房地产', '基建', '建材', '能源', '资源', '煤炭', '石油', '电力',
+  '公用', '央企', '国企', '中特估', '高股息', '红利低波', '沪深300价值',
+  '上证50', '中证100', '恒生高股息', '钢铁', '家电', '港股通高股息'
 ];
 
 const SECTOR_KEYWORDS = [
@@ -307,8 +323,26 @@ function parseRankItem(raw, typeLabel) {
     nav: nav,
     dailyPct: dailyPct,
     perf: { m1: m1, m3: m3, m6: m6, y1: y1, ytd: ytd },
-    fundSize: sizeNum
+    fundSize: sizeNum,
+    valueStyle: isValueCandidate(name)
   };
+}
+
+function isValueCandidate(name) {
+  if (!name) return false;
+  for (var i = 0; i < VALUE_KEYWORDS.length; i++) {
+    if (name.indexOf(VALUE_KEYWORDS[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function isOverheated(item) {
+  var perf = item && item.perf ? item.perf : {};
+  if ((item && item.dailyPct) > 6) return true;
+  if ((perf.m1 || 0) > 18) return true;
+  if ((perf.m3 || 0) > 35) return true;
+  if ((perf.y1 || 0) > 60) return true;
+  return false;
 }
 
 function buildRankUrl(sort) {
@@ -318,9 +352,9 @@ function buildRankUrl(sort) {
   var sdStr = sd.getFullYear() + '-' + pad2(sd.getMonth() + 1) + '-' + pad2(sd.getDate());
   var edStr = ed.getFullYear() + '-' + pad2(ed.getMonth() + 1) + '-' + pad2(ed.getDate());
   return 'https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf&ft=' + sort.ft +
-    '&rs=&gs=0&sc=' + sort.sc + '&st=desc' +
+    '&rs=&gs=0&sc=' + sort.sc + '&st=' + (sort.st || 'desc') +
     '&sd=' + sdStr + '&ed=' + edStr +
-    '&qdii=&tabSubtype=,,,,,&pi=1&pn=30&dx=1&v=' + Date.now();
+    '&qdii=&tabSubtype=,,,,,&pi=' + (sort.pi || 1) + '&pn=' + (sort.pn || 30) + '&dx=1&v=' + Date.now();
 }
 
 async function getRankCandidates(excludeCodes) {
@@ -330,23 +364,34 @@ async function getRankCandidates(excludeCodes) {
   });
 
   var candidates = {};
-  var tasks = RANK_SORTS.map(function(sort) {
-    return fetchText(buildRankUrl(sort), { timeout: 10000 }).then(function(res) {
-      if (!res.ok) return [];
-      var parsed = parseRankBody(res.body);
-      if (parsed.error || !parsed.datas) return [];
-      var list = [];
-      parsed.datas.forEach(function(raw) {
-        var item = parseRankItem(raw, sort.label);
-        if (item && !excludeMap[item.code]) {
-          // 规模未知时保留；已知但过小则过滤。
-          if (item.fundSize > 0 && item.fundSize < 0.5) return;
-          if (!candidates[item.code] || coarseScore(item) > coarseScore(candidates[item.code])) {
-            candidates[item.code] = item;
-          }
-        }
-      });
-      return list;
+  var tasks = [];
+
+  CANDIDATE_SOURCES.forEach(function(sort) {
+    (sort.pages || [1]).forEach(function(page) {
+      var pageSort = Object.assign({}, sort, { pi: page, pn: 30 });
+      tasks.push(
+        fetchText(buildRankUrl(pageSort), { timeout: 10000 }).then(function(res) {
+          if (!res.ok) return;
+          var parsed = parseRankBody(res.body);
+          if (parsed.error || !parsed.datas) return;
+
+          parsed.datas.forEach(function(raw) {
+            var item = parseRankItem(raw, sort.label);
+            if (!item || excludeMap[item.code]) return;
+
+            // 规模未知时保留；已知但过小则过滤。
+            if (item.fundSize > 0 && item.fundSize < 0.5) return;
+
+            // 价值池只保留价值/低估风格；成长池避免把明显过热产品继续塞入短名单。
+            if (sort.mode === 'value' && !item.valueStyle) return;
+            if (sort.mode === 'growth' && isOverheated(item)) return;
+
+            if (!candidates[item.code] || coarseScore(item) > coarseScore(candidates[item.code])) {
+              candidates[item.code] = item;
+            }
+          });
+        })
+      );
     });
   });
 
@@ -364,13 +409,14 @@ function clamp(val, min, max) {
 function coarseScore(item) {
   var perf = item.perf || {};
   var score = 50;
-  score += clamp(perf.m1 || 0, -10, 20) * 0.8;
-  score += clamp(perf.m3 || 0, -15, 30) * 1.0;
-  score += clamp(perf.m6 || 0, -20, 40) * 0.7;
-  score += clamp(perf.y1 || 0, -25, 50) * 0.45;
-  score += clamp(perf.ytd || 0, -20, 40) * 0.4;
-  if (item.dailyPct > 7) score -= 8;
-  if (item.dailyPct < -6) score += 5;
+  score += clamp(perf.m1 || 0, -10, 20) * 0.5;
+  score += clamp(perf.m3 || 0, -15, 30) * 0.8;
+  score += clamp(perf.m6 || 0, -20, 40) * 0.6;
+  score += clamp(perf.y1 || 0, -25, 50) * 0.35;
+  score += clamp(perf.ytd || 0, -20, 40) * 0.3;
+  if (item.valueStyle) score += 12;
+  if (isOverheated(item)) score -= 16;
+  else if (item.dailyPct < -6) score += 4;
   return score;
 }
 
@@ -685,9 +731,10 @@ async function enrichProfile(profile, market) {
   };
 
   enriched.tags = enriched.sectors.slice(0, 2);
-  if (enriched.perf.m3 > 0) enriched.tags.push('中期趋势向上');
+  if (enriched.valueStyle) enriched.tags.push('价值/低估');
+  else if (enriched.perf.m3 > 0) enriched.tags.push('中期趋势向上');
   if (bullRatio > 0.45) enriched.tags.push('重仓股情绪偏多');
-  if (enriched.tags.length === 0) enriched.tags = ['近期表现靠前'];
+  if (enriched.tags.length === 0) enriched.tags = ['估值性价比候选'];
 
   return enriched;
 }
@@ -695,19 +742,42 @@ async function enrichProfile(profile, market) {
 async function buildShortlist(candidates, market) {
   if (!candidates || candidates.length === 0) return [];
 
-  var sorted = candidates.slice().sort(function(a, b) {
+  var seenSector = {};
+  var shortlist = [];
+
+  function pickDiversified(list, limit) {
+    for (var i = 0; i < list.length && shortlist.length < limit; i++) {
+      var item = list[i];
+      if (shortlist.some(function(existing) { return existing.code === item.code; })) continue;
+      var nameSectors = deriveSectorFromName(item.name);
+      var sectorKey = nameSectors[0] || 'other';
+      if (seenSector[sectorKey] >= 2) continue;
+      shortlist.push(item);
+      seenSector[sectorKey] = (seenSector[sectorKey] || 0) + 1;
+    }
+  }
+
+  var valueCandidates = candidates.filter(function(item) {
+    return item.valueStyle;
+  }).sort(function(a, b) {
+    return coarseScore(b) - coarseScore(a);
+  });
+  var growthCandidates = candidates.filter(function(item) {
+    return !item.valueStyle;
+  }).sort(function(a, b) {
     return coarseScore(b) - coarseScore(a);
   });
 
-  var seenSector = {};
-  var shortlist = [];
-  for (var i = 0; i < sorted.length && shortlist.length < MAX_PROFILES; i++) {
-    var item = sorted[i];
-    var nameSectors = deriveSectorFromName(item.name);
-    var sectorKey = nameSectors[0] || 'other';
-    if (seenSector[sectorKey] >= 2) continue;
-    shortlist.push(item);
-    seenSector[sectorKey] = (seenSector[sectorKey] || 0) + 1;
+  // 优先给价值/低估池保留名额，剩余名额再给成长/趋势池。
+  var valueTarget = Math.max(0, Math.min(4, valueCandidates.length));
+  pickDiversified(valueCandidates, valueTarget);
+  pickDiversified(growthCandidates, MAX_PROFILES);
+
+  if (shortlist.length < MAX_PROFILES) {
+    var rest = candidates.slice().sort(function(a, b) {
+      return coarseScore(b) - coarseScore(a);
+    });
+    pickDiversified(rest, MAX_PROFILES);
   }
 
   var profiles = await mapLimit(shortlist, CONCURRENCY, function(item) {
@@ -723,7 +793,9 @@ async function buildShortlist(candidates, market) {
         risk: '中',
         reason: '暂未获取到重仓股新闻，主要依据近期净值表现。',
         positionHint: '建议首次建仓 5%-10%',
-        tags: deriveSectorFromName(item.name).slice(0, 2)
+        tags: isValueCandidate(item.name)
+          ? ['价值/低估'].concat(deriveSectorFromName(item.name).slice(0, 1))
+          : deriveSectorFromName(item.name).slice(0, 2)
       });
     });
   });
@@ -734,6 +806,7 @@ async function buildShortlist(candidates, market) {
 function buildEvidence(profile) {
   var evidence = [];
   var perf = profile.perf || {};
+  if (profile.valueStyle) evidence.push('价值/低估风格');
   if (perf.m1 != null) evidence.push('近1月 ' + formatPct(perf.m1));
   if (perf.m3 != null) evidence.push('近3月 ' + formatPct(perf.m3));
   if (perf.m6 != null) evidence.push('近6月 ' + formatPct(perf.m6));
@@ -761,6 +834,8 @@ function scoreWithRules(profile, market) {
   score += clamp(perf.m6 || 0, -20, 40) * 0.7;
   score += clamp(perf.y1 || 0, -25, 50) * 0.4;
   score += clamp(perf.ytd || 0, -20, 40) * 0.4;
+  if (profile.valueStyle) score += 10;
+  if (isOverheated(profile)) score -= 12;
 
   if (profile.sentiment) {
     score += profile.sentiment.bullRatio * 20;
@@ -784,14 +859,21 @@ function buildFallbackResult(shortlist, market, candidateCount) {
       var score = scoreWithRules(profile, market);
       var perf = profile.perf || {};
       var reasonParts = [];
-      if (perf.m3 > 0) reasonParts.push('近3月上涨 ' + formatPct(perf.m3));
+      if (profile.valueStyle) {
+        reasonParts.push('价值/低估风格，估值性价比相对更优');
+      }
+      if (perf.m3 > 0 && !isOverheated(profile)) {
+        reasonParts.push('近3月上涨 ' + formatPct(perf.m3));
+      } else if (perf.m3 <= 0) {
+        reasonParts.push('近期涨幅不高，估值拥挤度相对较低');
+      }
       if (profile.sentiment && profile.sentiment.bullRatio > 0.4) {
         reasonParts.push('重仓股近期利好信号偏多');
       }
       if (profile.sectors && profile.sectors.length > 0) {
         reasonParts.push('主要聚焦 ' + profile.sectors.join('、'));
       }
-      if (reasonParts.length === 0) reasonParts.push('近期净值表现相对靠前');
+      if (reasonParts.length === 0) reasonParts.push('估值性价比候选，具备一定安全边际');
 
       return {
         code: profile.code,
@@ -836,6 +918,7 @@ function buildProfilePrompt(profiles, market) {
   profiles.forEach(function(p, idx) {
     var perf = p.perf || {};
     lines.push((idx + 1) + '. ' + p.name + '(' + p.code + ')，类型: ' + p.type +
+      '，风格: ' + (p.valueStyle ? '价值/低估' : '成长/趋势') +
       '，净值: ' + p.nav.toFixed(4) + '，当日: ' + formatPct(p.dailyPct) +
       '，近1月: ' + formatPct(perf.m1) + '，近3月: ' + formatPct(perf.m3) +
       '，近6月: ' + formatPct(perf.m6) + '，近1年: ' + formatPct(perf.y1));
@@ -856,7 +939,9 @@ function buildProfilePrompt(profiles, market) {
   });
   lines.push('');
   lines.push('请从候选基金中挑选最适合“当日建仓”的基金，最多返回 5 只。');
-  lines.push('评分要综合趋势、估值性价比、当日位置、行业景气、新闻情绪和风险，不要只看短期涨幅。');
+  lines.push('优先选择估值性价比更高、拥挤度更低、价值/低估风格更明确的基金。');
+  lines.push('近期涨幅高不等于适合建仓，已经明显过热的产品应降低评分或直接排除。');
+  lines.push('评分要综合估值性价比、中期趋势、当日位置、行业景气、新闻情绪和风险。');
   lines.push('输出纯 JSON，不要 markdown 代码块，格式如下：');
   lines.push('{"recommendations":[{"code":"6位基金代码","score":0-100,"risk":"低|中|高","reason":"80-150字理由","positionHint":"建议首次建仓比例","tags":["标签"],"evidence":["依据"]}]}');
   return lines.join('\n');
