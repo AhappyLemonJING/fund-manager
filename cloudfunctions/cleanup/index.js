@@ -2,6 +2,8 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 var AI_CACHE_COLLECTION = 'fund_analysis_cache';
+var RECOMMEND_CACHE_COLLECTION = 'fund_recommend_cache';
+var CACHE_COLLECTIONS = [AI_CACHE_COLLECTION, RECOMMEND_CACHE_COLLECTION];
 var PAGE_SIZE = 100;
 var REMOVE_BATCH_SIZE = 50;
 
@@ -56,9 +58,9 @@ async function removeRecords(collection, records) {
   }
 }
 
-exports.main = async function() {
+async function cleanCollection(name) {
   var db = cloud.database();
-  var collection = db.collection(AI_CACHE_COLLECTION);
+  var collection = db.collection(name);
   var todayKey = getShanghaiDayKey();
   var records;
 
@@ -66,10 +68,10 @@ exports.main = async function() {
     records = await listAllCacheRecords(collection);
   } catch (e) {
     if (isCollectionNotExistError(e)) {
-      return { success: true, deleted: 0, kept: 0, cutoffDayKey: todayKey };
+      return { name: name, deleted: 0, kept: 0, cutoffDayKey: todayKey };
     }
-    console.error('读取 AI 缓存集合失败:', e.message || e);
-    return { success: false, deleted: 0, kept: 0, cutoffDayKey: todayKey, error: e.message || String(e) };
+    console.error('读取缓存集合失败 [' + name + ']:', e.message || e);
+    return { name: name, deleted: 0, kept: 0, cutoffDayKey: todayKey, error: e.message || String(e) };
   }
 
   var stale = records.filter(function(record) {
@@ -77,11 +79,39 @@ exports.main = async function() {
   });
 
   await removeRecords(collection, stale);
-  console.log('AI 缓存清理完成，删除 ' + stale.length + ' 条，保留 ' + (records.length - stale.length) + ' 条');
+  console.log('缓存清理完成 [' + name + ']，删除 ' + stale.length + ' 条，保留 ' + (records.length - stale.length) + ' 条');
   return {
-    success: true,
+    name: name,
     deleted: stale.length,
     kept: records.length - stale.length,
     cutoffDayKey: todayKey
+  };
+}
+
+exports.main = async function() {
+  var todayKey = getShanghaiDayKey();
+  var details = [];
+  var totalDeleted = 0;
+  var totalKept = 0;
+  var errors = [];
+
+  for (var i = 0; i < CACHE_COLLECTIONS.length; i++) {
+    var result = await cleanCollection(CACHE_COLLECTIONS[i]);
+    details.push(result);
+    if (result.error) {
+      errors.push(result.name + ': ' + result.error);
+    } else {
+      totalDeleted += result.deleted;
+      totalKept += result.kept;
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    deleted: totalDeleted,
+    kept: totalKept,
+    cutoffDayKey: todayKey,
+    details: details,
+    errors: errors
   };
 };

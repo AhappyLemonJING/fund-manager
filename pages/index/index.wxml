@@ -6,7 +6,7 @@
 </view>
 
 
-<!-- 主 Tab 栏：持仓 / 自选 -->
+<!-- 主 Tab 栏：持仓 / 自选 / 推荐 -->
 <view class="main-tabs">
   <view class="main-tab {{activeTab === 'position' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="position">
     <text>持仓</text>
@@ -15,9 +15,12 @@
   <view class="main-tab {{activeTab === 'watch' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="watch">
     自选
   </view>
-
+  <view class="main-tab {{activeTab === 'recommend' ? 'main-tab-active' : ''}}" bindtap="switchTab" data-id="recommend">
+    推荐
+  </view>
 </view>
 
+<block wx:if="{{activeTab !== 'recommend'}}">
 <!-- 分组 Tab 栏 -->
 <scroll-view class="tab-bar" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
   <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeGroup === item.id ? 'tab-active' : ''}}" bindtap="switchGroup" bindlongpress="longPressTab" data-id="{{item.id}}" data-name="{{item.name}}">
@@ -73,6 +76,112 @@
     </view>
   </view>
 </scroll-view>
+</block>
+
+<block wx:else>
+<scroll-view class="scrollarea recommend-scroll" scroll-y type="list"
+  refresher-enabled refresher-triggered="{{recommendRefreshing}}"
+  bindrefresherrefresh="onRecommendRefresh" refresher-threshold="80">
+  <view wx:if="{{recommendLoading && recommendations.length === 0}}" class="state-box">
+    <view class="state-spinner"></view>
+    <text class="state-text">AI 正在挑选适合建仓的基金...</text>
+  </view>
+
+  <view wx:elif="{{recommendError && recommendations.length === 0}}" class="state-box">
+    <image wx:if="{{chickImages.error}}" class="chick-state" src="{{chickImages.error}}" mode="aspectFit" />
+    <view wx:else class="empty-icon bb-alert"></view>
+    <text class="state-text">推荐加载失败</text>
+    <text class="state-sub">{{recommendError}}</text>
+    <view class="retry-btn" bindtap="onRecommendRefresh">重新加载</view>
+  </view>
+
+  <view wx:else>
+    <view class="rec-hero">
+      <view class="rec-hero-top">
+        <view>
+          <text class="rec-hero-title">今日建仓机会</text>
+          <text class="rec-hero-date">{{recommendDate}}</text>
+        </view>
+        <view class="ai-badge {{recommendAiPowered ? '' : 'ai-badge-rule'}}">
+          <view class="bb-sparkles"></view>
+          <text>{{recommendAiPowered ? 'DeepSeek AI 推荐' : '规则引擎推荐'}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{recommendMarketContext && recommendMarketContext.topSectors.length > 0}}" class="rec-market">
+        <text class="rec-market-title">今日强势行业</text>
+        <scroll-view class="rec-market-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+          <view wx:for="{{recommendMarketContext.topSectors}}" wx:key="name" class="rec-sector-chip {{item.changePct >= 0 ? 'rec-chip-up' : 'rec-chip-down'}}">
+            {{item.name}} {{item.changePct >= 0 ? '+' : ''}}{{item.changePct}}%
+          </view>
+          <view class="rec-market-spacer"></view>
+        </scroll-view>
+      </view>
+    </view>
+
+    <view wx:if="{{recommendations.length === 0}}" class="state-box">
+      <image wx:if="{{chickImages.empty}}" class="chick-state" src="{{chickImages.empty}}" mode="aspectFit" />
+      <view wx:else class="empty-icon bb-fund"></view>
+      <text class="state-text">暂无可推荐基金</text>
+      <text class="state-sub">可能是候选数据不足，稍后再试</text>
+    </view>
+
+    <view wx:else class="rec-list">
+      <view wx:for="{{recommendations}}" wx:key="code" class="rec-card" bindtap="goRecommendDetail" data-code="{{item.code}}" data-name="{{item.name}}">
+        <view class="rec-card-head">
+          <view class="rec-rank">{{index + 1}}</view>
+          <view class="rec-fund">
+            <text class="rec-name">{{item.name}}</text>
+            <text class="rec-code">{{item.code}}</text>
+          </view>
+          <view class="rec-score">
+            <text class="rec-score-num">{{item.score}}</text>
+            <text class="rec-score-label">AI 评分</text>
+          </view>
+        </view>
+
+        <view class="rec-metrics">
+          <view class="rec-metric">
+            <text class="rec-metric-label">近1月</text>
+            <text class="rec-metric-val {{item.m1Up ? 'red' : 'green'}}">{{item.m1Str}}</text>
+          </view>
+          <view class="rec-metric">
+            <text class="rec-metric-label">近3月</text>
+            <text class="rec-metric-val {{item.m3Up ? 'red' : 'green'}}">{{item.m3Str}}</text>
+          </view>
+          <view class="rec-metric">
+            <text class="rec-metric-label">近6月</text>
+            <text class="rec-metric-val {{item.m6Up ? 'red' : 'green'}}">{{item.m6Str}}</text>
+          </view>
+          <view class="rec-metric">
+            <text class="rec-metric-label">近1年</text>
+            <text class="rec-metric-val {{item.y1Up ? 'red' : 'green'}}">{{item.y1Str}}</text>
+          </view>
+        </view>
+
+        <view class="rec-reason">{{item.reason}}</view>
+
+        <view class="rec-tags">
+          <view wx:for="{{item.tags}}" wx:key="*this" wx:for-item="tag" class="rec-tag">{{tag}}</view>
+          <view class="rec-risk {{item.riskClass}}">{{item.risk}}风险</view>
+        </view>
+
+        <view class="rec-actions">
+          <view wx:if="{{!item._added}}" class="rec-add" catchtap="addRecommendedFund" data-code="{{item.code}}" data-name="{{item.name}}">
+            + 加入自选
+          </view>
+          <view wx:else class="rec-added">✓ 已添加</view>
+          <view class="rec-detail" bindtap="goRecommendDetail" data-code="{{item.code}}" data-name="{{item.name}}">查看详情</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="rec-disclaimer">
+      AI 建议仅供参考，不构成投资建议；基金有风险，投资需谨慎。
+    </view>
+  </view>
+</scroll-view>
+</block>
 
 <!-- 添加基金弹窗 -->
 <view wx:if="{{showAddModal}}" class="modal-mask" bindtap="hideAddModal">

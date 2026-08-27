@@ -17,6 +17,7 @@
 - **定投计划** — 每日/每周/每双周/每月自动执行定投，按当前净值生成交易记录
 - **行情总览** — 上证、深证、创业板、科创 50 等指数实时行情，行业板块涨跌排行
 - **基金发现** — 按类型（股票/混合/债券/指数/货币）和业绩指标排名浏览全市场基金，快速加入自选
+- **每日建仓推荐** — 首页“推荐”栏综合净值趋势、行业景气、重仓股新闻情绪，用 AI 推荐当日适合建仓的基金并给出理由
 - **云端同步** — 基于微信云开发实现多设备数据合并同步
 
 ## 技术栈
@@ -25,7 +26,7 @@
 |---|------|
 | 前端框架 | 微信小程序原生 + Skyline 渲染引擎 + glass-easel 组件框架 |
 | 样式 | 自定义 CSS 变量，嫩黄色活泼卡通风 |
-| 后端 | 微信云函数（`fundApi` / `analyze` / `sync`） |
+| 后端 | 微信云函数（`fundApi` / `analyze` / `recommend` / `sync`） |
 | 数据源 | 东方财富基金 API、新浪行情 API、华尔街见闻快讯 |
 | AI 引擎 | DeepSeek API（可选），自动降级为本地关键词规则引擎 |
 | 存储 | 微信 Storage 本地存储 + 云开发数据库云端同步 |
@@ -38,7 +39,7 @@ fund-manager/
 ├── app.json                  # 应用配置（Skyline、glass-easel）
 ├── app.wxss                  # 全局样式（嫩黄卡通风 CSS 变量）
 ├── pages/
-│   ├── index/                # 首页 — 持仓/自选列表、分组过滤、添加基金
+│   ├── index/                # 首页 — 持仓/自选/推荐列表、分组过滤、添加基金
 │   ├── detail/               # 详情 — 净值走势图、重仓股、新闻分析、交易记录
 │   ├── market/               # 行情 — 大盘指数、行业板块涨跌
 │   └── discover/             # 发现 — 按类型/业绩排名浏览基金
@@ -47,6 +48,7 @@ fund-manager/
 ├── cloudfunctions/
 │   ├── fundApi/              # 基金数据 API 代理（搜索、净值、历史、持仓、排名、行情）
 │   ├── analyze/              # AI 分析引擎（DeepSeek + 关键词规则降级）
+│   ├── recommend/            # 每日建仓基金推荐（候选筛选 + 特征富化 + AI 排序 + 缓存）
 │   ├── sync/                 # 多设备数据合并同步
 │   └── chickAssets/          # 小鸡插画/底部导航图标上传到云存储并返回 URL
 ├── project.config.json
@@ -76,7 +78,7 @@ fund-manager/
 
    `project.config.json` 中的 `appid` 使用 `touristappid` 占位，不会提交真实 AppID。
 4. 在云开发控制台创建环境
-5. 上传并部署 `cloudfunctions/` 下的四个云函数
+5. 上传并部署 `cloudfunctions/` 下的五个云函数
 6. 编译运行即可
 
 > 部署 `chickAssets` 云函数后首次调用会把 `assets/` 下的小鸡插画和底部导航图标上传到云存储；`app.js` 会自动拉取并缓存 URL。
@@ -91,12 +93,12 @@ fund-manager/
 
 ### 配置 AI 分析（可选）
 
-`analyze` 云函数支持 DeepSeek 大模型分析，未配置时自动降级为本地关键词规则引擎：
+`analyze` 和 `recommend` 云函数支持 DeepSeek 大模型分析，未配置时自动降级为本地关键词规则引擎：
 
 1. 在 [DeepSeek 开放平台](https://platform.deepseek.com) 获取 API Key
-2. 微信云开发控制台 → 云函数 → `analyze` → 环境变量，添加：
+2. 微信云开发控制台 → 云函数 → `analyze` 和 `recommend` → 环境变量，添加：
    - `DEEPSEEK_API_KEY` = `sk-xxxxxxxxxxxxxxxx`
-3. 重新部署 `analyze` 云函数
+3. 重新部署 `analyze` 和 `recommend` 云函数
 
 ## 隐私与安全
 

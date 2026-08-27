@@ -630,6 +630,17 @@ App({
     }).then(function(res) { return res.result; });
   },
 
+  fetchRecommendations: function(params) {
+    var data = { type: 'daily' };
+    if (params) {
+      Object.keys(params).forEach(function(k) { data[k] = params[k]; });
+    }
+    return wx.cloud.callFunction({
+      name: 'recommend',
+      data: data
+    }).then(function(res) { return res.result; });
+  },
+
   // ============ 定投计划 ============
 
   loadPlans: function() {
